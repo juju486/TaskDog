@@ -1,6 +1,7 @@
 const Router = require('koa-router');
 const { getDatabase } = require('../utils/database');
-const { scheduleTask, unscheduleTask } = require('../utils/scheduler');
+const { scheduleTask, unscheduleTask, logTaskExecution } = require('../utils/scheduler');
+const cron = require('node-cron');
 
 const router = new Router();
 
@@ -17,7 +18,6 @@ router.get('/', async (ctx) => {
       const script = scripts.find(s => s.id === task.script_id);
       return {
         ...task,
-        script_name: script ? script.name : 'Unknown Script'
       };
     }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     
@@ -285,6 +285,76 @@ router.patch('/:id/toggle', async (ctx) => {
       success: false,
       message: error.message
     };
+  }
+});
+
+// 启动任务
+router.post('/:id/start', async (ctx) => {
+  const db = getDatabase();
+  const { id } = ctx.params;
+
+  try {
+    const taskId = parseInt(id, 10);
+    const task = db.get('scheduled_tasks').find({ id: taskId }).value();
+
+    if (!task) {
+      ctx.status = 404;
+      ctx.body = { success: false, message: 'Task not found' };
+      return;
+    }
+
+    if (!cron.validate(task.cron_expression)) {
+      ctx.status = 400;
+      ctx.body = { success: false, message: 'Invalid cron expression' };
+      return;
+    }
+
+    // 更新状态为 active
+    const updatedTask = { ...task, status: 'active', updated_at: new Date().toISOString() };
+    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'active', updated_at: updatedTask.updated_at }).write();
+
+    // 重新调度
+    unscheduleTask(taskId);
+    scheduleTask(updatedTask);
+
+    // 记录日志
+    try { logTaskExecution(taskId, task.script_id, 'info', 'Task started manually'); } catch {}
+
+    ctx.body = { success: true, message: 'Task started successfully', data: { status: 'active' } };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
+  }
+});
+
+// 停止任务
+router.post('/:id/stop', async (ctx) => {
+  const db = getDatabase();
+  const { id } = ctx.params;
+
+  try {
+    const taskId = parseInt(id, 10);
+    const task = db.get('scheduled_tasks').find({ id: taskId }).value();
+
+    if (!task) {
+      ctx.status = 404;
+      ctx.body = { success: false, message: 'Task not found' };
+      return;
+    }
+
+    // 更新状态为 inactive
+    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'inactive', updated_at: new Date().toISOString() }).write();
+
+    // 取消调度
+    unscheduleTask(taskId);
+
+    // 记录日志
+    try { logTaskExecution(taskId, task.script_id, 'info', 'Task stopped manually'); } catch {}
+
+    ctx.body = { success: true, message: 'Task stopped successfully', data: { status: 'inactive' } };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
   }
 });
 
