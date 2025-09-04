@@ -76,29 +76,44 @@ export const taskApi = {
 }
 
 export const configApi = {
-  // 获取所有配置
+  // 兼容：获取所有配置（旧）
   getAll(category) {
     return api.get('/config', { params: { category } })
   },
   
-  // 获取单个配置
+  // 兼容：获取单个配置（旧）
   getByKey(key) {
     return api.get(`/config/${key}`)
   },
   
-  // 创建或更新配置
+  // 兼容：创建或更新配置（旧）
   save(data) {
     return api.post('/config', data)
   },
   
-  // 删除配置
+  // 兼容：删除配置（旧）
   delete(key) {
     return api.delete(`/config/${key}`)
   },
   
-  // 批量更新配置
+  // 兼容：批量更新（旧）
   batchUpdate(configs) {
     return api.put('/config/batch', { configs })
+  },
+
+  // 新：一次性获取全部分组配置
+  getAllGroups() {
+    return api.get('/config/all')
+  },
+
+  // 新：一次性保存全部分组配置
+  saveAll(configObj) {
+    return api.put('/config/all', configObj)
+  },
+
+  // 新：测试配置连通性
+  test(configObj) {
+    return api.post('/config/test', configObj)
   }
 }
 

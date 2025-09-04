@@ -245,5 +245,17 @@
     "nextTaskId": 6,
     "nextConfigId": 5,
     "nextLogId": 20
+  },
+  "config_groups": {
+    "backup": {
+      "backup_retention_days": "30"
+    },
+    "notification": {
+      "notification_email": "admin@example.com"
+    },
+    "system": {
+      "log_level": "info",
+      "max_concurrent_tasks": "3"
+    }
   }
 }
