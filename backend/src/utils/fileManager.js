@@ -7,6 +7,7 @@ const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
 const LANGUAGE_EXTENSIONS = {
   'powershell': '.ps1',
   'batch': '.bat',
+  'cmd': '.bat',
   'python': '.py',
   'javascript': '.js',
   'node': '.js',
@@ -14,9 +15,27 @@ const LANGUAGE_EXTENSIONS = {
   'bash': '.sh'
 };
 
+const ALLOWED_LANGUAGES = Object.keys(LANGUAGE_EXTENSIONS);
+
+// 统一解析脚本路径，确保在 scripts 目录内，避免目录穿越
+function resolveScriptFullPath(filePath) {
+  // 允许传入类似 "scripts/foo.ps1" 或 "foo.ps1"
+  const relative = filePath.startsWith('scripts') ? filePath : path.join('scripts', filePath);
+  const full = path.resolve(path.join(__dirname, '../..', relative));
+  const scriptsRoot = path.resolve(SCRIPTS_DIR) + path.sep;
+  if (!full.startsWith(scriptsRoot)) {
+    throw new Error('非法的脚本路径');
+  }
+  return full;
+}
+
 // 获取语言对应的文件扩展名
 function getFileExtension(language) {
   return LANGUAGE_EXTENSIONS[language] || '.txt';
+}
+
+function isSupportedLanguage(language) {
+  return ALLOWED_LANGUAGES.includes(language);
 }
 
 // 生成脚本文件名
@@ -33,7 +52,7 @@ async function ensureScriptsDir() {
 
 // 读取脚本文件内容
 async function readScriptFile(filePath) {
-  const fullPath = path.join(__dirname, '../..', filePath);
+  const fullPath = resolveScriptFullPath(filePath);
   try {
     const content = await fs.readFile(fullPath, 'utf8');
     return content;
@@ -45,7 +64,7 @@ async function readScriptFile(filePath) {
 
 // 写入脚本文件内容
 async function writeScriptFile(filePath, content) {
-  const fullPath = path.join(__dirname, '../..', filePath);
+  const fullPath = resolveScriptFullPath(filePath);
   try {
     await fs.ensureDir(path.dirname(fullPath));
     await fs.writeFile(fullPath, content, 'utf8');
@@ -57,7 +76,7 @@ async function writeScriptFile(filePath, content) {
 
 // 删除脚本文件
 async function deleteScriptFile(filePath) {
-  const fullPath = path.join(__dirname, '../..', filePath);
+  const fullPath = resolveScriptFullPath(filePath);
   try {
     await fs.remove(fullPath);
   } catch (error) {
@@ -68,7 +87,7 @@ async function deleteScriptFile(filePath) {
 
 // 检查文件是否存在
 async function fileExists(filePath) {
-  const fullPath = path.join(__dirname, '../..', filePath);
+  const fullPath = resolveScriptFullPath(filePath);
   try {
     await fs.access(fullPath);
     return true;
@@ -78,11 +97,16 @@ async function fileExists(filePath) {
 }
 
 module.exports = {
+  SCRIPTS_DIR,
+  LANGUAGE_EXTENSIONS,
+  ALLOWED_LANGUAGES,
   generateScriptFileName,
   ensureScriptsDir,
   readScriptFile,
   writeScriptFile,
   deleteScriptFile,
   fileExists,
-  getFileExtension
+  getFileExtension,
+  isSupportedLanguage,
+  resolveScriptFullPath
 };

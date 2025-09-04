@@ -6,10 +6,34 @@ const {
   readScriptFile,
   writeScriptFile,
   deleteScriptFile,
-  fileExists
+  fileExists,
+  isSupportedLanguage
 } = require('../utils/fileManager');
+const path = require('path');
 
 const router = new Router();
+
+// 根据名称与语言生成不重名的脚本文件路径
+async function generateUniqueScriptPath(baseName, language, preferFilePath = null) {
+  let fileName = generateScriptFileName(baseName, language);
+  let filePath = `scripts/${fileName}`;
+  if (preferFilePath) {
+    // 允许指定完整相对路径（限 scripts 目录内）
+    const onlyName = path.basename(preferFilePath);
+    filePath = preferFilePath.startsWith('scripts') ? preferFilePath : `scripts/${onlyName}`;
+  }
+  let suffix = 0;
+  // 避免覆盖已存在文件
+  // 注意：fileExists 内部做了路径约束，防止目录穿越
+  while (await fileExists(filePath)) {
+    suffix += 1;
+    const ext = path.extname(filePath);
+    const base = path.basename(filePath, ext);
+    const dir = path.dirname(filePath);
+    filePath = path.join(dir, `${base}-${suffix}${ext}`).replace(/\\/g, '/');
+  }
+  return filePath;
+}
 
 // 获取所有脚本
 router.get('/', async (ctx) => {
@@ -90,7 +114,7 @@ router.get('/:id', async (ctx) => {
 // 创建脚本
 router.post('/', async (ctx) => {
   const db = getDatabase();
-  const { name, description, content, language = 'shell' } = ctx.request.body;
+  const { name, description, content, language = 'shell', file_path } = ctx.request.body;
   
   if (!name || !content) {
     ctx.status = 400;
@@ -100,23 +124,29 @@ router.post('/', async (ctx) => {
     };
     return;
   }
+
+  if (!isSupportedLanguage(language)) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: 'Unsupported language' };
+    return;
+  }
   
   try {
     await ensureScriptsDir();
     
     const id = db.get('_meta.nextScriptId').value();
-    const fileName = generateScriptFileName(name, language);
-    const filePath = `scripts/${fileName}`;
+    // 生成不冲突的文件路径（若传入 file_path 则尽量使用它）
+    const targetPath = await generateUniqueScriptPath(name, language, file_path);
     
     // 写入脚本文件
-    await writeScriptFile(filePath, content);
+    await writeScriptFile(targetPath, content);
     
     const script = {
       id,
       name,
       description,
       language,
-      file_path: filePath,
+      file_path: targetPath,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -159,6 +189,12 @@ router.put('/:id', async (ctx) => {
       };
       return;
     }
+
+    if (language && !isSupportedLanguage(language)) {
+      ctx.status = 400;
+      ctx.body = { success: false, message: 'Unsupported language' };
+      return;
+    }
     
     // 如果内容有变化，更新文件
     if (content !== undefined) {
@@ -168,12 +204,13 @@ router.put('/:id', async (ctx) => {
     // 如果名称或语言有变化，可能需要重命名文件
     let newFilePath = script.file_path;
     if ((name && name !== script.name) || (language && language !== script.language)) {
-      const newFileName = generateScriptFileName(name || script.name, language || script.language);
-      newFilePath = `scripts/${newFileName}`;
+      const candidate = generateScriptFileName(name || script.name, language || script.language);
+      // 生成不冲突的新路径
+      newFilePath = await generateUniqueScriptPath(name || script.name, language || script.language, `scripts/${candidate}`);
       
       if (newFilePath !== script.file_path) {
         // 读取旧文件内容
-        const oldContent = content || await readScriptFile(script.file_path);
+        const oldContent = content !== undefined ? content : await readScriptFile(script.file_path);
         // 写入新文件
         await writeScriptFile(newFilePath, oldContent);
         // 删除旧文件
@@ -195,7 +232,7 @@ router.put('/:id', async (ctx) => {
     ctx.body = {
       success: true,
       message: 'Script updated successfully',
-      data: { ...updated, content: content || await readScriptFile(newFilePath) }
+      data: { ...updated, content: content !== undefined ? content : await readScriptFile(newFilePath) }
     };
   } catch (error) {
     ctx.status = 500;
@@ -250,7 +287,8 @@ router.delete('/:id', async (ctx) => {
 router.post('/:id/test', async (ctx) => {
   const db = getDatabase();
   const { id } = ctx.params;
-  const { runScript } = require('../utils/scheduler');
+  // 改为调用带日志的 testScript
+  const { testScript } = require('../utils/scheduler');
   
   try {
     const script = db.get('scripts')
@@ -266,18 +304,64 @@ router.post('/:id/test', async (ctx) => {
       return;
     }
     
-    const result = await runScript(script, { id: 0, name: 'Test Run' });
+    const result = await testScript(script);
     
     ctx.body = {
       success: true,
-      data: result
+      data: {
+        success: result.success,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr
+      }
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = 200;
     ctx.body = {
-      success: false,
-      message: error.message
+      success: true,
+      data: {
+        success: false,
+        exitCode: -1,
+        stdout: '',
+        stderr: error.message
+      }
     };
+  }
+});
+
+// 新增：下载脚本文件
+router.get('/:id/download', async (ctx) => {
+  const db = getDatabase();
+  const { id } = ctx.params;
+  const fs = require('fs-extra');
+
+  try {
+    const script = db.get('scripts')
+      .find({ id: parseInt(id) })
+      .value();
+
+    if (!script) {
+      ctx.status = 404;
+      ctx.body = { success: false, message: 'Script not found' };
+      return;
+    }
+
+    const fullPath = path.join(__dirname, '../..', script.file_path);
+    const fileName = path.basename(fullPath);
+
+    const exists = await fs.pathExists(fullPath);
+    if (!exists) {
+      ctx.status = 404;
+      ctx.body = { success: false, message: 'Script file not found' };
+      return;
+    }
+
+    ctx.set('Content-Type', 'application/octet-stream');
+    ctx.set('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    ctx.body = fs.createReadStream(fullPath);
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
   }
 });
 

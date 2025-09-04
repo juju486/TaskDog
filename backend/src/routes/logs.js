@@ -3,6 +3,91 @@ const { getDatabase } = require('../utils/database');
 
 const router = new Router();
 
+// 工具：统一将字符串转为时间戳（毫秒），兼容 'YYYY-MM-DD HH:mm:ss' 与 ISO 字符串
+function toTimestamp(input) {
+  if (!input) return NaN;
+  if (input instanceof Date) return input.getTime();
+  // 若为 "YYYY-MM-DD HH:mm:ss"，转为 ISO 近似格式
+  if (typeof input === 'string' && input.includes(' ') && !input.includes('T')) {
+    const isoLike = input.replace(' ', 'T');
+    const d = new Date(isoLike);
+    return d.getTime();
+  }
+  return new Date(input).getTime();
+}
+
+// 获取日志统计（需在 /:id 之前声明以免被拦截）
+router.get('/stats/summary', async (ctx) => {
+  const db = getDatabase();
+  const { start_date, end_date, days } = ctx.query;
+  
+  try {
+    let logs = db.get('logs').value() || [];
+
+    if (days) {
+      const n = parseInt(days, 10) || 7;
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - n + 1);
+      const startTs = start.getTime();
+      const endTs = end.getTime();
+      logs = logs.filter(l => {
+        const ts = toTimestamp(l.created_at);
+        return !isNaN(ts) && ts >= startTs && ts <= endTs;
+      });
+    } else {
+      // 时间过滤（可选）
+      const startTs = toTimestamp(start_date);
+      const endTs = toTimestamp(end_date);
+      if (!isNaN(startTs)) {
+        logs = logs.filter(log => toTimestamp(log.created_at) >= startTs);
+      }
+      if (!isNaN(endTs)) {
+        logs = logs.filter(log => toTimestamp(log.created_at) <= endTs);
+      }
+    }
+
+    const stats = {
+      total: logs.length,
+      by_type: {},
+      by_date: {},
+      successes: 0,
+      errors: 0,
+      info: 0
+    };
+
+    logs.forEach(log => {
+      // 类型计数
+      stats.by_type[log.type] = (stats.by_type[log.type] || 0) + 1;
+      if (log.type === 'success') stats.successes++;
+      if (log.type === 'error') stats.errors++;
+      if (log.type === 'info') stats.info++;
+      
+      // 日期计数（YYYY-MM-DD）
+      const date = (log.created_at || '').split('T')[0];
+      stats.by_date[date] = (stats.by_date[date] || 0) + 1;
+    });
+
+    ctx.body = { success: true, data: stats };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
+  }
+});
+
+// 获取日志类型列表（在 /:id 之前）
+router.get('/meta/types', async (ctx) => {
+  const db = getDatabase();
+  try {
+    const logs = db.get('logs').value() || [];
+    const types = [...new Set(logs.map(log => log.type))].sort();
+    ctx.body = { success: true, data: types };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
+  }
+});
+
 // 获取日志列表
 router.get('/', async (ctx) => {
   const db = getDatabase();
@@ -13,7 +98,8 @@ router.get('/', async (ctx) => {
     task_id, 
     script_id,
     start_date,
-    end_date 
+    end_date,
+    keyword
   } = ctx.query;
   
   try {
@@ -31,13 +117,24 @@ router.get('/', async (ctx) => {
     if (script_id) {
       logs = logs.filter(log => log.script_id === parseInt(script_id));
     }
-    
-    if (start_date) {
-      logs = logs.filter(log => log.created_at >= start_date);
+
+    // 时间过滤改为按时间戳比较，避免字符串比较问题
+    const startTs = toTimestamp(start_date);
+    const endTs = toTimestamp(end_date);
+    if (!isNaN(startTs)) {
+      logs = logs.filter(log => toTimestamp(log.created_at) >= startTs);
     }
-    
-    if (end_date) {
-      logs = logs.filter(log => log.created_at <= end_date);
+    if (!isNaN(endTs)) {
+      logs = logs.filter(log => toTimestamp(log.created_at) <= endTs);
+    }
+
+    // 关键字过滤（消息与详情）
+    if (keyword && String(keyword).trim()) {
+      const kw = String(keyword).toLowerCase();
+      logs = logs.filter(l =>
+        (l.message && l.message.toLowerCase().includes(kw)) ||
+        (l.details && String(l.details).toLowerCase().includes(kw))
+      );
     }
     
     // 按时间倒序排列
@@ -84,7 +181,7 @@ router.get('/', async (ctx) => {
   }
 });
 
-// 获取单个日志
+// 获取单个日志（必须放在固定路径之后）
 router.get('/:id', async (ctx) => {
   const db = getDatabase();
   const { id } = ctx.params;
@@ -204,7 +301,7 @@ router.delete('/:id', async (ctx) => {
   }
 });
 
-// 批量删除日志
+// 批量删除日志（保留原有 / 删除接口）
 router.delete('/', async (ctx) => {
   const db = getDatabase();
   const { ids, type, before_date } = ctx.request.body;
@@ -227,7 +324,10 @@ router.delete('/', async (ctx) => {
       }
       
       if (before_date) {
-        logsToDelete = logsToDelete.filter(log => log.created_at < before_date);
+        const beforeTs = toTimestamp(before_date);
+        if (!isNaN(beforeTs)) {
+          logsToDelete = logsToDelete.filter(log => toTimestamp(log.created_at) < beforeTs);
+        }
       }
       
       for (const log of logsToDelete) {
@@ -250,70 +350,29 @@ router.delete('/', async (ctx) => {
   }
 });
 
-// 获取日志统计
-router.get('/stats/summary', async (ctx) => {
+// 兼容前端：DELETE /logs/cleanup?days=30&type=error
+router.delete('/cleanup', async (ctx) => {
   const db = getDatabase();
-  const { start_date, end_date } = ctx.query;
+  const { days = 30, type = '' } = ctx.query; // 使用 ctx.query
   
   try {
-    let logs = db.get('logs').value() || [];
+    const n = parseInt(days, 10) || 30;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - n); // 修复变量名拼写
+    const cutoffTs = cutoff.getTime();
     
-    // 时间过滤
-    if (start_date) {
-      logs = logs.filter(log => log.created_at >= start_date);
-    }
-    
-    if (end_date) {
-      logs = logs.filter(log => log.created_at <= end_date);
-    }
-    
-    // 统计
-    const stats = {
-      total: logs.length,
-      by_type: {},
-      by_date: {}
-    };
-    
-    logs.forEach(log => {
-      // 按类型统计
-      stats.by_type[log.type] = (stats.by_type[log.type] || 0) + 1;
-      
-      // 按日期统计
-      const date = log.created_at.split('T')[0];
-      stats.by_date[date] = (stats.by_date[date] || 0) + 1;
+    const logs = db.get('logs').value() || [];
+    const toDelete = logs.filter(l => {
+      const ts = toTimestamp(l.created_at);
+      return (!isNaN(ts) && ts < cutoffTs) && (!type || l.type === type);
     });
     
-    ctx.body = {
-      success: true,
-      data: stats
-    };
-  } catch (error) {
-    ctx.status = 500;
-    ctx.body = {
-      success: false,
-      message: error.message
-    };
-  }
-});
-
-// 获取日志类型列表
-router.get('/meta/types', async (ctx) => {
-  const db = getDatabase();
-  
-  try {
-    const logs = db.get('logs').value() || [];
-    const types = [...new Set(logs.map(log => log.type))].sort();
+    toDelete.forEach(l => db.get('logs').remove({ id: l.id }).write());
     
-    ctx.body = {
-      success: true,
-      data: types
-    };
+    ctx.body = { success: true, message: `Deleted ${toDelete.length} logs successfully`, data: { deletedCount: toDelete.length } };
   } catch (error) {
     ctx.status = 500;
-    ctx.body = {
-      success: false,
-      message: error.message
-    };
+    ctx.body = { success: false, message: error.message };
   }
 });
 

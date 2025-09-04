@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { spawn } = require('child_process');
 const { getDatabase } = require('./database');
-const { readScriptFile } = require('./fileManager');
+const { readScriptFile, resolveScriptFullPath } = require('./fileManager');
 const fs = require('fs-extra');
 const path = require('path');
 
@@ -92,7 +92,7 @@ async function executeTask(task) {
         `Task completed successfully in ${duration}ms`,
         {
           duration,
-          output: result.output,
+          output: result.stdout,
           exitCode: result.exitCode
         }
       );
@@ -101,11 +101,11 @@ async function executeTask(task) {
         task.id, 
         task.script_id, 
         'error', 
-        `Task failed: ${result.error}`,
+        `Task failed: ${result.stderr || result.error}`,
         {
           duration,
-          error: result.error,
-          output: result.output,
+          error: result.stderr || result.error,
+          output: result.stdout,
           exitCode: result.exitCode
         }
       );
@@ -118,60 +118,73 @@ async function executeTask(task) {
 
 async function executeScript(script) {
   try {
+    const isWin = process.platform === 'win32';
     let command, args, options = {};
-    const scriptPath = path.join(__dirname, '../..', script.file_path);
+    const scriptPath = resolveScriptFullPath(script.file_path);
     
     if (script.language === 'python') {
-      command = 'python';
+      command = isWin ? 'python' : 'python3';
       args = [scriptPath];
     } else if (script.language === 'node' || script.language === 'javascript') {
       command = 'node';
       args = [scriptPath];
     } else if (script.language === 'batch' || script.language === 'cmd') {
-      // Windows 批处理
-      command = scriptPath;
-      args = [];
-      options.shell = true;
+      if (isWin) {
+        command = 'cmd.exe';
+        args = ['/c', scriptPath];
+      } else {
+        // 非 Windows 环境尝试用 sh 运行
+        command = 'sh';
+        args = [scriptPath];
+      }
     } else if (script.language === 'powershell') {
-      command = 'powershell';
-      args = ['-File', scriptPath];
-      options.shell = true;
+      if (isWin) {
+        command = 'powershell.exe';
+        args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath];
+      } else {
+        // Linux/macOS 可用 pwsh（若已安装）
+        command = 'pwsh';
+        args = ['-NoProfile', '-File', scriptPath];
+      }
     } else if (script.language === 'bash' || script.language === 'shell') {
       command = 'bash';
       args = [scriptPath];
     } else {
-      // 默认作为可执行文件处理
+      // 默认尝试直接执行
       command = scriptPath;
       args = [];
       options.shell = true;
     }
     
     return new Promise((resolve) => {
-      let output = '';
-      let errorOutput = '';
+      let stdout = '';
+      let stderr = '';
       
       const child = spawn(command, args, {
         ...options,
-        cwd: process.cwd(),
-        env: process.env
+        cwd: path.dirname(scriptPath),
+        env: process.env,
+        windowsHide: true
       });
       
       child.stdout.on('data', (data) => {
-        output += data.toString();
+        stdout += data.toString();
       });
       
       child.stderr.on('data', (data) => {
-        errorOutput += data.toString();
+        stderr += data.toString();
       });
       
       child.on('close', (code) => {
         const result = {
           success: code === 0,
           exitCode: code,
-          output: output.trim(),
-          error: errorOutput.trim()
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          // 兼容旧字段
+          output: stdout.trim(),
+          error: stderr.trim()
         };
-        
         resolve(result);
       });
       
@@ -179,27 +192,35 @@ async function executeScript(script) {
         resolve({
           success: false,
           exitCode: -1,
-          output: output.trim(),
-          error: error.message
+          stdout: stdout.trim(),
+          stderr: (stderr + '\n' + (error.message || '')).trim(),
+          output: stdout.trim(),
+          error: (stderr + '\n' + (error.message || '')).trim()
         });
       });
       
       // 设置超时 (5 分钟)
-      setTimeout(() => {
-        child.kill('SIGTERM');
+      const timeout = setTimeout(() => {
+        try { child.kill('SIGTERM'); } catch {}
         resolve({
           success: false,
           exitCode: -1,
-          output: output.trim(),
+          stdout: stdout.trim(),
+          stderr: 'Script execution timeout (5 minutes)',
+          output: stdout.trim(),
           error: 'Script execution timeout (5 minutes)'
         });
       }, 5 * 60 * 1000);
+      
+      child.on('exit', () => clearTimeout(timeout));
     });
     
   } catch (error) {
     return {
       success: false,
       exitCode: -1,
+      stdout: '',
+      stderr: error.message,
       output: '',
       error: error.message
     };
@@ -246,12 +267,12 @@ async function testScript(script) {
   const logType = result.success ? 'success' : 'error';
   const logMessage = result.success 
     ? `Script test completed successfully in ${duration}ms`
-    : `Script test failed: ${result.error}`;
+    : `Script test failed: ${result.stderr || result.error}`;
   
   logTaskExecution(null, script.id, logType, logMessage, {
     duration,
-    output: result.output,
-    error: result.error,
+    output: result.stdout,
+    error: result.stderr || result.error,
     exitCode: result.exitCode
   });
   

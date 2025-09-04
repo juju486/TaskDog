@@ -26,4 +26,7 @@ api.interceptors.response.use(
   }
 )
 
+// 新增：原始请求（不改写响应），用于文件下载等场景
+api.getRaw = (url, config = {}) => axios.get(`${api.defaults.baseURL}${url}`, config)
+
 export default api

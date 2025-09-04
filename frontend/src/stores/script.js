@@ -59,7 +59,8 @@ export const useScriptStore = defineStore('script', {
     async testScript(id) {
       try {
         const response = await scriptApi.test(id)
-        return response.data
+        // 兼容后端 data.data 结构
+        return response.data ?? response
       } catch (error) {
         console.error('Failed to test script:', error)
         throw error

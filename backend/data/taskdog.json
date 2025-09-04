@@ -10,24 +10,6 @@
       "updated_at": "2025-01-10T10:00:00.000Z"
     },
     {
-      "id": 2,
-      "name": "清理临时文件",
-      "description": "清理系统临时文件和回收站",
-      "language": "batch",
-      "file_path": "scripts/cleanup_temp_files.bat",
-      "created_at": "2025-01-10T10:30:00.000Z",
-      "updated_at": "2025-01-10T10:30:00.000Z"
-    },
-    {
-      "id": 3,
-      "name": "备份重要文件",
-      "description": "自动备份用户文档和桌面文件",
-      "language": "python",
-      "file_path": "scripts/backup_important_files.py",
-      "created_at": "2025-01-10T11:00:00.000Z",
-      "updated_at": "2025-01-10T11:00:00.000Z"
-    },
-    {
       "id": 4,
       "name": "网络连接测试",
       "description": "测试常用网站的连通性和网络延迟",
@@ -76,7 +58,7 @@
       "status": "active",
       "created_at": "2025-01-10T11:30:00.000Z",
       "updated_at": "2025-01-10T11:30:00.000Z",
-      "last_run": null
+      "last_run": "2025-09-04T10:00:00.814Z"
     }
   ],
   "configs": [
@@ -90,20 +72,20 @@
       "updated_at": "2025-01-10T10:00:00.000Z"
     },
     {
-      "id": 2,
-      "key": "log_level",
-      "value": "info",
-      "category": "system",
-      "description": "日志记录级别",
-      "created_at": "2025-01-10T10:00:00.000Z",
-      "updated_at": "2025-01-10T10:00:00.000Z"
-    },
-    {
       "id": 3,
       "key": "notification_email",
       "value": "admin@example.com",
       "category": "notification",
       "description": "通知邮箱地址",
+      "created_at": "2025-01-10T10:00:00.000Z",
+      "updated_at": "2025-01-10T10:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "key": "log_level",
+      "value": "info",
+      "category": "system",
+      "description": "日志记录级别",
       "created_at": "2025-01-10T10:00:00.000Z",
       "updated_at": "2025-01-10T10:00:00.000Z"
     },
@@ -119,31 +101,13 @@
   ],
   "logs": [
     {
-      "id": 1,
-      "type": "info",
-      "message": "系统启动完成",
-      "script_id": null,
+      "id": 5,
+      "type": "success",
+      "message": "脚本 '网络连接测试' 创建成功",
+      "script_id": 4,
       "task_id": null,
       "details": null,
-      "created_at": "2025-01-10T09:00:00.000Z"
-    },
-    {
-      "id": 2,
-      "type": "success",
-      "message": "脚本 '系统健康检查' 创建成功",
-      "script_id": 1,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-01-10T10:00:00.000Z"
-    },
-    {
-      "id": 3,
-      "type": "success",
-      "message": "定时任务 '每日系统检查' 创建成功",
-      "script_id": 1,
-      "task_id": 1,
-      "details": null,
-      "created_at": "2025-01-10T10:01:00.000Z"
+      "created_at": "2025-01-10T11:30:00.000Z"
     },
     {
       "id": 4,
@@ -155,19 +119,91 @@
       "created_at": "2025-01-10T10:30:00.000Z"
     },
     {
-      "id": 5,
+      "id": 3,
       "type": "success",
-      "message": "脚本 '网络连接测试' 创建成功",
+      "message": "定时任务 '每日系统检查' 创建成功",
+      "script_id": 1,
+      "task_id": 1,
+      "details": null,
+      "created_at": "2025-01-10T10:01:00.000Z"
+    },
+    {
+      "id": 2,
+      "type": "success",
+      "message": "脚本 '系统健康检查' 创建成功",
+      "script_id": 1,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-01-10T10:00:00.000Z"
+    },
+    {
+      "id": 1,
+      "type": "info",
+      "message": "系统启动完成",
+      "script_id": null,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-01-10T09:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "type": "info",
+      "message": "Task \"网络状态检查\" started",
+      "script_id": 4,
+      "task_id": 4,
+      "details": null,
+      "created_at": "2025-09-04T10:00:00.816Z"
+    },
+    {
+      "id": 7,
+      "type": "error",
+      "message": "Task failed: ����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~~~~~~~~~~~~~~~~~\r\n����ʽ������а�������ı�ǡ�www.aliyun.com\"},\r\n    @{Name=\"微软\"; Host=\"www.microsoft.com\"},\r\n    @{Name=\"谷歌DNS\"; Host=\"8.8.8.8\"}\r\n)\r\n# 测试每个目标\r\nforeach ($target in $targets) {\r\n    Write-Host \"\\n测试����\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~\r\n��ϣ�ı���������\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:31 �ַ�: 29\r\n+ Write-Host \"\\n=== 测试完成 ===\" -ForegroundColor Green\r\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\r\n�ַ���ȱ����ֹ��: \"��\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:32 �ַ�: 2\r\n+ \r\n�ӱ���ʽ��ȱ���ҡ�)����\r\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\r\n    + FullyQualifiedErrorId : UnexpectedToken",
+      "script_id": 4,
+      "task_id": 4,
+      "details": "{\"duration\":375,\"error\":\"����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~~~~~~~~~~~~~~~~~\\r\\n����ʽ������а�������ı�ǡ�www.aliyun.com\\\"},\\r\\n    @{Name=\\\"微软\\\"; Host=\\\"www.microsoft.com\\\"},\\r\\n    @{Name=\\\"谷歌DNS\\\"; Host=\\\"8.8.8.8\\\"}\\r\\n)\\r\\n# 测试每个目标\\r\\nforeach ($target in $targets) {\\r\\n    Write-Host \\\"\\\\n测试����\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~\\r\\n��ϣ�ı���������\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:31 �ַ�: 29\\r\\n+ Write-Host \\\"\\\\n=== 测试完成 ===\\\" -ForegroundColor Green\\r\\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\\r\\n�ַ���ȱ����ֹ��: \\\"��\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:32 �ַ�: 2\\r\\n+ \\r\\n�ӱ���ʽ��ȱ���ҡ�)����\\r\\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\\r\\n    + FullyQualifiedErrorId : UnexpectedToken\",\"output\":\"\",\"exitCode\":1}",
+      "created_at": "2025-09-04T10:00:01.193Z"
+    },
+    {
+      "id": 8,
+      "type": "info",
+      "message": "Testing script: 网络连接测试",
       "script_id": 4,
       "task_id": null,
       "details": null,
-      "created_at": "2025-01-10T11:30:00.000Z"
+      "created_at": "2025-09-04T10:19:25.365Z"
+    },
+    {
+      "id": 9,
+      "type": "error",
+      "message": "Script test failed: ����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~~~~~~~~~~~~~~~~~\r\n����ʽ������а�������ı�ǡ�www.aliyun.com\"},\r\n    @{Name=\"微软\"; Host=\"www.microsoft.com\"},\r\n    @{Name=\"谷歌DNS\"; Host=\"8.8.8.8\"}\r\n)\r\n# 测试每个目标\r\nforeach ($target in $targets) {\r\n    Write-Host \"\\n测试����\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~\r\n��ϣ�ı���������\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:31 �ַ�: 29\r\n+ Write-Host \"\\n=== 测试完成 ===\" -ForegroundColor Green\r\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\r\n�ַ���ȱ����ֹ��: \"��\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:32 �ַ�: 2\r\n+ \r\n�ӱ���ʽ��ȱ���ҡ�)����\r\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\r\n    + FullyQualifiedErrorId : UnexpectedToken",
+      "script_id": 4,
+      "task_id": null,
+      "details": "{\"duration\":398,\"output\":\"\",\"error\":\"����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~~~~~~~~~~~~~~~~~\\r\\n����ʽ������а�������ı�ǡ�www.aliyun.com\\\"},\\r\\n    @{Name=\\\"微软\\\"; Host=\\\"www.microsoft.com\\\"},\\r\\n    @{Name=\\\"谷歌DNS\\\"; Host=\\\"8.8.8.8\\\"}\\r\\n)\\r\\n# 测试每个目标\\r\\nforeach ($target in $targets) {\\r\\n    Write-Host \\\"\\\\n测试����\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~\\r\\n��ϣ�ı���������\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:31 �ַ�: 29\\r\\n+ Write-Host \\\"\\\\n=== 测试完成 ===\\\" -ForegroundColor Green\\r\\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\\r\\n�ַ���ȱ����ֹ��: \\\"��\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:32 �ַ�: 2\\r\\n+ \\r\\n�ӱ���ʽ��ȱ���ҡ�)����\\r\\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\\r\\n    + FullyQualifiedErrorId : UnexpectedToken\",\"exitCode\":1}",
+      "created_at": "2025-09-04T10:19:25.765Z"
+    },
+    {
+      "id": 10,
+      "type": "info",
+      "message": "Testing script: 系统健康检查",
+      "script_id": 1,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-09-04T10:19:42.931Z"
+    },
+    {
+      "id": 11,
+      "type": "success",
+      "message": "Script test completed successfully in 2848ms",
+      "script_id": 1,
+      "task_id": null,
+      "details": "{\"duration\":2848,\"output\":\"=== 系统健康检�?===\\nCPU使用率： 37 %\\n内存使用率： 71.42 %\\n磁盘 C: 使用率： 64.1 %\\n磁盘 D: 使用率： 48.81 %\",\"error\":\"\",\"exitCode\":0}",
+      "created_at": "2025-09-04T10:19:45.780Z"
     }
   ],
   "_meta": {
     "nextScriptId": 5,
     "nextTaskId": 5,
     "nextConfigId": 5,
-    "nextLogId": 6
+    "nextLogId": 12
   }
 }

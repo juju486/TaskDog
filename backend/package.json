@@ -17,7 +17,6 @@
     "koa-static": "^5.0.0",
     "lowdb": "^1.0.0",
     "node-cron": "^3.0.3",
-    "child_process": "^1.0.2",
     "fs-extra": "^11.2.0",
     "uuid": "^9.0.1",
     "moment": "^2.29.4"

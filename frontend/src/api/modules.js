@@ -29,6 +29,12 @@ export const scriptApi = {
   // 测试运行脚本
   test(id) {
     return api.post(`/scripts/${id}/test`)
+  },
+
+  // 下载脚本文件
+  download(id) {
+    // 使用原生 axios 获取二进制数据
+    return api.getRaw(`/scripts/${id}/download`, { responseType: 'blob' })
   }
 }
 
