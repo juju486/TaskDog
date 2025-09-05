@@ -5,6 +5,41 @@ const { readScriptFile, resolveScriptFullPath } = require('./fileManager');
 const fs = require('fs-extra');
 const path = require('path');
 
+// 新增：构建执行环境变量（来自配置中的 globals）
+function buildExecutionEnv() {
+  try {
+    const db = getDatabase();
+    const cfg = db.get('config_groups').value() || {};
+    const globals = cfg.globals || {};
+    const inherit = globals.inheritSystemEnv !== false;
+    const env = inherit ? { ...process.env } : {};
+    const items = Array.isArray(globals.items) ? globals.items : [];
+
+    // 注入各键到进程环境（大写下划线）
+    for (const it of items) {
+      if (!it || !it.key) continue;
+      const normKey = String(it.key).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      env[normKey] = it.value == null ? '' : String(it.value);
+    }
+
+    // 以 JSON 形式注入供 shim 使用，保留原始 Key
+    const kv = {};
+    for (const it of items) {
+      if (!it || !it.key) continue;
+      kv[String(it.key)] = it.value == null ? '' : String(it.value);
+    }
+    env.TASKDOG_GLOBALS_JSON = JSON.stringify(kv);
+
+    // TD.set 所需后端地址（优先系统 env 配置）
+    const cfgUrl = cfg.system && cfg.system.backendUrl ? String(cfg.system.backendUrl) : '';
+    env.TASKDOG_API_URL = process.env.TASKDOG_API_URL || cfgUrl || `http://127.0.0.1:${process.env.PORT || 3001}`;
+
+    return env;
+  } catch {
+    return process.env;
+  }
+}
+
 const scheduledJobs = new Map();
 
 async function initScheduler() {
@@ -127,7 +162,8 @@ async function executeScript(script) {
       args = [scriptPath];
     } else if (script.language === 'node' || script.language === 'javascript') {
       command = 'node';
-      args = [scriptPath];
+      const tdShim = path.join(__dirname, 'td_shims', 'node.js');
+      args = ['-r', tdShim, scriptPath];
     } else if (script.language === 'batch' || script.language === 'cmd') {
       if (isWin) {
         command = 'cmd.exe';
@@ -163,7 +199,7 @@ async function executeScript(script) {
       const child = spawn(command, args, {
         ...options,
         cwd: path.dirname(scriptPath),
-        env: process.env,
+        env: buildExecutionEnv(),
         windowsHide: true
       });
       

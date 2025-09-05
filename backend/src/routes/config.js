@@ -95,4 +95,62 @@ router.post('/test', async (ctx) => {
   }
 });
 
+// 新增：替换 globals 分组（整体）
+router.put('/globals', async (ctx) => {
+  const db = getDatabase();
+  const body = ctx.request.body || {};
+  try {
+    const cfg = db.get('config_groups').value() || {};
+    const incoming = {
+      inheritSystemEnv: body.inheritSystemEnv !== false,
+      items: Array.isArray(body.items) ? body.items.map(n => ({
+        key: String(n.key || ''),
+        value: n.value == null ? '' : String(n.value),
+        secret: !!n.secret
+      })) : []
+    };
+    cfg.globals = incoming;
+    db.set('config_groups', cfg).write();
+    ctx.body = { success: true, data: cfg.globals };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
+  }
+});
+
+// 新增：单个全局变量 upsert（TD.set 支持）
+router.post('/globals/set', async (ctx) => {
+  const db = getDatabase();
+  const { key, value, secret } = ctx.request.body || {};
+  if (!key || typeof key !== 'string') {
+    ctx.status = 400;
+    ctx.body = { success: false, message: 'key is required' };
+    return;
+  }
+  if (String(key).length > 128) {
+    ctx.status = 400;
+    ctx.body = { success: false, message: 'key too long' };
+    return;
+  }
+  try {
+    const cfg = db.get('config_groups').value() || {};
+    const globals = cfg.globals || { inheritSystemEnv: true, items: [] };
+    const items = Array.isArray(globals.items) ? globals.items : [];
+
+    const idx = items.findIndex((it) => it && String(it.key) === String(key));
+    if (idx >= 0) {
+      items[idx] = { ...items[idx], key: String(key), value: value == null ? '' : String(value), secret: !!(secret ?? items[idx].secret) };
+    } else {
+      items.push({ key: String(key), value: value == null ? '' : String(value), secret: !!secret });
+    }
+
+    db.set('config_groups', { ...cfg, globals: { ...globals, items } }).write();
+
+    ctx.body = { success: true, data: { key: String(key), value: value == null ? '' : String(value), secret: !!secret } };
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { success: false, message: error.message };
+  }
+});
+
 module.exports = router;

@@ -26,6 +26,15 @@
       "file_path": "scripts/test.js",
       "created_at": "2025-09-04T10:32:55.668Z",
       "updated_at": "2025-09-04T10:32:55.668Z"
+    },
+    {
+      "id": 6,
+      "name": "环境变量示例（Node）",
+      "description": "读取 TASKDOG_GREETING 环境变量",
+      "language": "node",
+      "file_path": "scripts/env_demo_node.js",
+      "created_at": "2025-09-04T12:00:00.000Z",
+      "updated_at": "2025-09-04T12:00:00.000Z"
     }
   ],
   "scheduled_tasks": [],
@@ -238,24 +247,143 @@
       "task_id": null,
       "details": null,
       "created_at": "2025-01-10T09:00:00.000Z"
+    },
+    {
+      "id": 20,
+      "type": "info",
+      "message": "Testing script: 环境变量示例（Node）",
+      "script_id": 6,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-09-05T06:51:29.614Z"
+    },
+    {
+      "id": 21,
+      "type": "error",
+      "message": "Script test failed: node:internal/modules/cjs/loader:1404\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'axios'\r\nRequire stack:\r\n- D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js\r\n- internal/preload\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1211:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\r\n    at require (node:internal/modules/helpers:135:16)\r\n    at Object.<anonymous> (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:6:15)\r\n    at Module._compile (node:internal/modules/cjs/loader:1730:14) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js',\r\n    'internal/preload'\r\n  ]\r\n}\r\n\r\nNode.js v22.16.0",
+      "script_id": 6,
+      "task_id": null,
+      "details": "{\"duration\":135,\"output\":\"\",\"error\":\"node:internal/modules/cjs/loader:1404\\r\\n  throw err;\\r\\n  ^\\r\\n\\r\\nError: Cannot find module 'axios'\\r\\nRequire stack:\\r\\n- D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js\\r\\n- internal/preload\\r\\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\\r\\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\\r\\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\\r\\n    at Function._load (node:internal/modules/cjs/loader:1211:37)\\r\\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\\r\\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\\r\\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\\r\\n    at require (node:internal/modules/helpers:135:16)\\r\\n    at Object.<anonymous> (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:6:15)\\r\\n    at Module._compile (node:internal/modules/cjs/loader:1730:14) {\\r\\n  code: 'MODULE_NOT_FOUND',\\r\\n  requireStack: [\\r\\n    'D:\\\\\\\\work\\\\\\\\other\\\\\\\\TaskDog\\\\\\\\backend\\\\\\\\src\\\\\\\\utils\\\\\\\\td_shims\\\\\\\\node.js',\\r\\n    'internal/preload'\\r\\n  ]\\r\\n}\\r\\n\\r\\nNode.js v22.16.0\",\"exitCode\":1}",
+      "created_at": "2025-09-05T06:51:29.753Z"
     }
   ],
   "_meta": {
-    "nextScriptId": 6,
+    "nextScriptId": 7,
     "nextTaskId": 6,
     "nextConfigId": 5,
-    "nextLogId": 20
+    "nextLogId": 22
   },
   "config_groups": {
-    "backup": {
-      "backup_retention_days": "30"
-    },
-    "notification": {
-      "notification_email": "admin@example.com"
-    },
     "system": {
       "log_level": "info",
       "max_concurrent_tasks": "3"
+    },
+    "execution": {
+      "interpreters": {
+        "powershell": {
+          "enabled": true,
+          "path": "powershell.exe"
+        },
+        "cmd": {
+          "enabled": true,
+          "path": "cmd.exe"
+        },
+        "python": {
+          "enabled": true,
+          "path": "python"
+        },
+        "node": {
+          "enabled": true,
+          "path": "node"
+        },
+        "bash": {
+          "enabled": false,
+          "path": "/bin/bash"
+        }
+      },
+      "defaultTimeoutMs": 300000,
+      "maxConcurrent": 2,
+      "queueSize": 20,
+      "workingDirPolicy": "scriptDir",
+      "allowedLanguages": [
+        "powershell",
+        "cmd",
+        "batch",
+        "python",
+        "node",
+        "javascript"
+      ],
+      "maxUploadKB": 512,
+      "pathIsolation": true
+    },
+    "scheduler": {
+      "schedulerTz": "Asia/Shanghai",
+      "overlapPolicy": "queue",
+      "catchup": false,
+      "jitterMs": 5000,
+      "retry": {
+        "maxAttempts": 1,
+        "backoffMs": 30000
+      }
+    },
+    "logging": {
+      "level": "info",
+      "retainDays": 30,
+      "captureMaxKB": 256,
+      "redactKeys": [
+        "token",
+        "password"
+      ],
+      "rotate": {
+        "maxSizeMB": 10,
+        "maxFiles": 5
+      }
+    },
+    "notify": {
+      "webhook": {
+        "enabled": false,
+        "items": []
+      },
+      "email": {
+        "enabled": false,
+        "host": "",
+        "port": 465,
+        "user": "",
+        "from": "",
+        "useTLS": true
+      },
+      "on": {
+        "taskStart": false,
+        "taskSuccess": false,
+        "taskError": true
+      }
+    },
+    "ui": {
+      "theme": "light",
+      "monacoTheme": "vs",
+      "pageSize": 10,
+      "editorWordWrap": true,
+      "tabSize": 2
+    },
+    "backup": {
+      "enabled": false,
+      "cron": "0 3 * * *",
+      "targetDir": "backup",
+      "backup_retention_days": "30"
+    },
+    "secrets": [],
+    "notification": {
+      "notification_email": "admin@example.com"
+    },
+    "globals": {
+      "inheritSystemEnv": true,
+      "items": [
+        {
+          "key": "TASKDOG_GREETING",
+          "value": "Hello TaskDog",
+          "secret": false
+        }
+      ]
     }
   }
 }

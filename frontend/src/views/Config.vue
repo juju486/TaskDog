@@ -201,6 +201,35 @@
             </el-form>
           </el-tab-pane>
 
+          <el-tab-pane label="全局变量" name="globals">
+            <div class="subsection">
+              <div class="subsection-title">环境变量（将与脚本执行相关）</div>
+              <el-form :model="configObj.globals" label-width="140px">
+                <el-form-item label="继承系统环境">
+                  <el-switch v-model="configObj.globals.inheritSystemEnv" />
+                </el-form-item>
+                <el-form-item label="变量列表">
+                  <div class="list">
+                    <div v-for="(g, i) in configObj.globals.items" :key="i" class="list-row">
+                      <el-input v-model="g.key" placeholder="KEY（仅包含字母数字与下划线）" />
+                      <el-input
+                        v-model="g.value"
+                        :type="g.secret ? 'password' : 'text'"
+                        show-password
+                        placeholder="VALUE"
+                      />
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <el-switch v-model="g.secret" />
+                        <el-button type="danger" link @click="removeGlobal(i)">删除</el-button>
+                      </div>
+                    </div>
+                    <el-button type="primary" link @click="addGlobal">+ 新增变量</el-button>
+                  </div>
+                </el-form-item>
+              </el-form>
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane label="备份" name="backup">
             <el-form :model="configObj.backup" label-width="140px">
               <el-form-item label="启用"><el-switch v-model="configObj.backup.enabled" /></el-form-item>
@@ -260,6 +289,7 @@ const defaultConfig = () => ({
   logging: { level: 'info', retainDays: 30, captureMaxKB: 256, redactKeys: ['token','password'], rotate: { maxSizeMB: 10, maxFiles: 5 } },
   notify: { webhook: { enabled: false, items: [] }, email: { enabled: false, host: '', port: 465, user: '', from: '', useTLS: true }, on: { taskStart: false, taskSuccess: false, taskError: true } },
   ui: { theme: 'light', monacoTheme: 'vs', pageSize: 10, editorWordWrap: true, tabSize: 2 },
+  globals: { inheritSystemEnv: true, items: [] },
   backup: { enabled: false, cron: '0 3 * * *', targetDir: 'backup' },
   secrets: []
 })
@@ -290,6 +320,8 @@ const loadAll = async () => {
         configObj.value.notify.on = { ...defaultConfig().notify.on, ...(res.data.notify.on || {}) }
       }
       configObj.value.ui = { ...defaultConfig().ui, ...(res.data.ui || {}) }
+      configObj.value.globals = { ...defaultConfig().globals, ...(res.data.globals || {}) }
+      if (!Array.isArray(configObj.value.globals.items)) configObj.value.globals.items = []
       configObj.value.backup = { ...defaultConfig().backup, ...(res.data.backup || {}) }
       configObj.value.secrets = res.data.secrets || []
     }
@@ -339,6 +371,15 @@ const addSecret = () => {
 }
 const removeSecret = (i) => {
   configObj.value.secrets.splice(i, 1)
+}
+
+const addGlobal = () => {
+  if (!configObj.value.globals) configObj.value.globals = { inheritSystemEnv: true, items: [] }
+  if (!Array.isArray(configObj.value.globals.items)) configObj.value.globals.items = []
+  configObj.value.globals.items.push({ key: '', value: '', secret: false })
+}
+const removeGlobal = (i) => {
+  configObj.value.globals.items.splice(i, 1)
 }
 
 onMounted(() => {
