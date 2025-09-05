@@ -114,6 +114,20 @@ export const configApi = {
   // 新：测试配置连通性
   test(configObj) {
     return api.post('/config/test', configObj)
+  },
+
+  // 依赖管理
+  listDeps(lang) {
+    return api.get('/config/deps/list', { params: { lang } })
+  },
+  installDep({ lang, name, version }) {
+    return api.post('/config/deps/install', { lang, name, version })
+  },
+  uninstallDep({ lang, name }) {
+    return api.post('/config/deps/uninstall', { lang, name })
+  },
+  depInfo({ lang, name }) {
+    return api.get('/config/deps/info', { params: { lang, name } })
   }
 }
 

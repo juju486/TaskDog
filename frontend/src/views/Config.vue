@@ -230,6 +230,50 @@
             </div>
           </el-tab-pane>
 
+          <el-tab-pane label="依赖" name="deps">
+            <div class="subsection">
+              <div class="subsection-title">依赖管理</div>
+              <div style="display:flex; gap:12px; align-items:center; margin-bottom: 8px;">
+                <el-segmented v-model="depLang" :options="['node','python']" />
+                <el-button size="small" @click="loadDeps" :loading="depsLoading">刷新</el-button>
+              </div>
+
+              <el-form label-width="120px" @submit.prevent>
+                <el-form-item label="安装依赖">
+                  <div class="list-row" style="grid-template-columns: 240px 240px auto;">
+                    <el-input v-model="depName" placeholder="包名，如 axios 或 requests" />
+                    <el-input v-model="depVersion" placeholder="版本，可留空" />
+                    <el-button type="primary" :loading="installing" :disabled="installing" @click="installDep">安装</el-button>
+                  </div>
+                </el-form-item>
+              </el-form>
+
+              <div class="subsection-title" style="margin-top: 8px;">已安装</div>
+              <el-table :data="deps" v-loading="depsLoading" size="small" style="width: 100%">
+                <el-table-column label="#" type="index" width="60" />
+                <el-table-column label="名称">
+                  <template #default="{ row }">
+                    <el-link type="primary" @click="showDepInfo(row)">{{ row.name }}</el-link>
+                  </template>
+                </el-table-column>
+                <el-table-column label="版本" prop="version" width="180">
+                  <template #default="{ row }">
+                    {{ row.version || '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="140">
+                  <template #default="{ row }">
+                    <el-popconfirm :title="`确认卸载 ${row.name} 吗？`" @confirm="() => uninstallDep(row.name)">
+                      <template #reference>
+                        <el-button type="danger" link :loading="uninstallingName===row.name">卸载</el-button>
+                      </template>
+                    </el-popconfirm>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane label="备份" name="backup">
             <el-form :model="configObj.backup" label-width="140px">
               <el-form-item label="启用"><el-switch v-model="configObj.backup.enabled" /></el-form-item>
@@ -254,6 +298,28 @@
         </el-tabs>
       </div>
     </div>
+
+    <!-- 依赖详情 -->
+    <el-dialog v-model="depInfoVisible" title="依赖详情" width="600px">
+      <div v-if="depInfoLoading" style="padding: 12px 0;">
+        <el-skeleton :rows="4" animated />
+      </div>
+      <div v-else>
+        <div style="display:grid; grid-template-columns: 120px 1fr; row-gap: 8px; column-gap: 8px;">
+          <div>名称</div><div>{{ depInfoData?.name || currentDepName }}</div>
+          <div>版本</div><div>{{ depInfoData?.version || '-' }}</div>
+          <div>描述</div><div>{{ depInfoData?.description || depInfoData?.summary || '-' }}</div>
+          <div>主页</div>
+          <div>
+            <a v-if="depInfoData?.homepage || depInfoData?.homePage" :href="depInfoData.homepage || depInfoData.homePage" target="_blank">{{ depInfoData.homepage || depInfoData.homePage }}</a>
+            <span v-else>-</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="depInfoVisible=false">关 闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -306,24 +372,36 @@ const loadAll = async () => {
   try {
     const res = await configApi.getAllGroups()
     if (res && res.data) {
+      const data = res.data || {}
       // 合并默认与已有，确保缺省字段存在
-      configObj.value = { ...defaultConfig(), ...res.data }
-      // 深合并关键分组
-      configObj.value.execution = { ...defaultConfig().execution, ...(res.data.execution || {}) }
-      configObj.value.execution.interpreters = { ...defaultConfig().execution.interpreters, ...((res.data.execution && res.data.execution.interpreters) || {}) }
-      configObj.value.scheduler = { ...defaultConfig().scheduler, ...(res.data.scheduler || {}) }
-      configObj.value.logging = { ...defaultConfig().logging, ...(res.data.logging || {}) }
-      configObj.value.notify = { ...defaultConfig().notify, ...(res.data.notify || {}) }
-      if (res.data.notify) {
-        configObj.value.notify.webhook = { ...defaultConfig().notify.webhook, ...(res.data.notify.webhook || {}) }
-        configObj.value.notify.email = { ...defaultConfig().notify.email, ...(res.data.notify.email || {}) }
-        configObj.value.notify.on = { ...defaultConfig().notify.on, ...(res.data.notify.on || {}) }
-      }
-      configObj.value.ui = { ...defaultConfig().ui, ...(res.data.ui || {}) }
-      configObj.value.globals = { ...defaultConfig().globals, ...(res.data.globals || {}) }
+      configObj.value = { ...defaultConfig(), ...data }
+      // 深合并关键分组，先取默认值+安全默认变量，再展开
+      const def = defaultConfig()
+      const exec = data.execution || {}
+      const execInterps = (exec && exec.interpreters) || {}
+      const sched = data.scheduler || {}
+      const logg = data.logging || {}
+      const notif = data.notify || {}
+      const notifWebhook = (notif && notif.webhook) || {}
+      const notifEmail = (notif && notif.email) || {}
+      const notifOn = (notif && notif.on) || {}
+      const ui = data.ui || {}
+      const globals = data.globals || {}
+      const backup = data.backup || {}
+
+      configObj.value.execution = { ...def.execution, ...exec }
+      configObj.value.execution.interpreters = { ...def.execution.interpreters, ...execInterps }
+      configObj.value.scheduler = { ...def.scheduler, ...sched }
+      configObj.value.logging = { ...def.logging, ...logg }
+      configObj.value.notify = { ...def.notify, ...notif }
+      configObj.value.notify.webhook = { ...def.notify.webhook, ...notifWebhook }
+      configObj.value.notify.email = { ...def.notify.email, ...notifEmail }
+      configObj.value.notify.on = { ...def.notify.on, ...notifOn }
+      configObj.value.ui = { ...def.ui, ...ui }
+      configObj.value.globals = { ...def.globals, ...globals }
       if (!Array.isArray(configObj.value.globals.items)) configObj.value.globals.items = []
-      configObj.value.backup = { ...defaultConfig().backup, ...(res.data.backup || {}) }
-      configObj.value.secrets = res.data.secrets || []
+      configObj.value.backup = { ...def.backup, ...backup }
+      configObj.value.secrets = data.secrets || []
     }
   } catch (e) {
     ElMessage.error('加载配置失败')
@@ -382,8 +460,82 @@ const removeGlobal = (i) => {
   configObj.value.globals.items.splice(i, 1)
 }
 
+// 依赖管理状态
+const depLang = ref('node')
+const deps = ref([])
+const depsLoading = ref(false)
+const depName = ref('')
+const depVersion = ref('')
+const installing = ref(false)
+const uninstallingName = ref('')
+
+const depInfoVisible = ref(false)
+const depInfoLoading = ref(false)
+const depInfoData = ref(null)
+const currentDepName = ref('')
+
+const loadDeps = async () => {
+  try {
+    depsLoading.value = true
+    const res = await configApi.listDeps(depLang.value)
+    deps.value = (res && res.data) ? res.data : []
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '加载依赖失败')
+  } finally {
+    depsLoading.value = false
+  }
+}
+
+const installDep = async () => {
+  if (!depName.value) {
+    ElMessage.warning('请输入包名')
+    return
+  }
+  try {
+    installing.value = true
+    await configApi.installDep({ lang: depLang.value, name: depName.value, version: depVersion.value || undefined })
+    ElMessage.success('安装完成')
+    depName.value = ''
+    depVersion.value = ''
+    loadDeps()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '安装失败')
+  } finally {
+    installing.value = false
+  }
+}
+
+const uninstallDep = async (name) => {
+  try {
+    uninstallingName.value = name
+    await configApi.uninstallDep({ lang: depLang.value, name })
+    ElMessage.success('已卸载')
+    loadDeps()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '卸载失败')
+  } finally {
+    uninstallingName.value = ''
+  }
+}
+
+const showDepInfo = async (row) => {
+  try {
+    currentDepName.value = row?.name || ''
+    depInfoVisible.value = true
+    depInfoLoading.value = true
+    const res = await configApi.depInfo({ lang: depLang.value, name: row.name })
+    depInfoData.value = res?.data || null
+  } catch (e) {
+    depInfoData.value = null
+    ElMessage.error(e?.response?.data?.message || '获取依赖详情失败')
+  } finally {
+    depInfoLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadAll()
+  // 初次进入依赖页时也可以手动点刷新
 })
 </script>
 
