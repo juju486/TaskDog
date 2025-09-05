@@ -57,6 +57,40 @@ function asNumber(v, d = 0) { const n = Number(v); return Number.isFinite(n) ? n
 function asBool(v, d = false) { return typeof v === 'boolean' ? v : v === 'true' ? true : v === 'false' ? false : d; }
 function asArray(v, d = []) { return Array.isArray(v) ? v : d; }
 
+// 新增：宽松 JSON 解析（允许未加引号的键、单引号字符串）
+function tryParseJSONLoose(text) {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  if (!t) return null;
+  // 快速路径：严格 JSON
+  try { return JSON.parse(t); } catch { /* fallthrough */ }
+  // 仅在看起来像对象/数组时尝试宽松转换
+  if (!/^[\[{]/.test(t)) return null;
+  try {
+    let s = t;
+    // 将单引号字符串替换为双引号（保留内部双引号）
+    s = s.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (m, g1) => '"' + g1.replace(/"/g, '\\"') + '"');
+    // 为未加引号的键补引号（支持中英文、数字、下划线）
+    s = s.replace(/([\{,\[]\s*)([A-Za-z0-9_\u4e00-\u9fa5]+)\s*:/g, '$1"$2":');
+    return JSON.parse(s);
+  } catch { return null; }
+}
+
+// 新增：将字符串智能转为对应类型（JSON/布尔/数字/null），否则原样返回
+function coerceValueType(value) {
+  if (typeof value !== 'string') return value;
+  const t = value.trim();
+  if (t === '') return '';
+  const loose = tryParseJSONLoose(t);
+  if (loose !== null) return loose;
+  // 严格 JSON 简写：true/false/null/数字
+  try { const v = JSON.parse(t); return v; } catch {}
+  if (/^-?\d+(?:\.\d+)?$/.test(t)) { const n = Number(t); if (Number.isFinite(n)) return n; }
+  if (/^(true|false)$/i.test(t)) return /^true$/i.test(t);
+  if (/^null$/i.test(t)) return null;
+  return value;
+}
+
 // 规范化/修复配置对象（不会移除未知字段）
 function sanitizeConfig(input) {
   const cfg = isObject(input) ? { ...input } : {};
@@ -169,11 +203,14 @@ function sanitizeConfig(input) {
   // globals
   const gIn = isObject(cfg.globals) ? { ...cfg.globals } : {};
   const itemsRaw = asArray(gIn.items, []);
-  const items = itemsRaw.map((it) => ({
-    key: asString(it && it.key, ''),
-    value: asString(it && it.value, ''),
-    secret: asBool(it && it.secret, false),
-  })).filter((it) => it.key);
+  const items = itemsRaw
+    .map((it) => ({
+      key: asString(it && it.key, ''),
+      // 保留原始值类型（可为字符串、数字、布尔、对象、数组等）
+      value: it && Object.prototype.hasOwnProperty.call(it, 'value') ? it.value : '',
+      secret: asBool(it && it.secret, false),
+    }))
+    .filter((it) => it.key);
   cfg.globals = { inheritSystemEnv: asBool(gIn.inheritSystemEnv, true), items };
 
   return cfg;
@@ -266,7 +303,14 @@ async function replaceGlobals(ctx) {
     const cfg = db.get('config_groups').value() || {};
     const incoming = {
       inheritSystemEnv: body.inheritSystemEnv !== false,
-      items: Array.isArray(body.items) ? body.items.map(n => ({ key: String(n.key || ''), value: n.value == null ? '' : String(n.value), secret: !!n.secret })) : []
+      items: Array.isArray(body.items)
+        ? body.items.map((n) => ({
+            key: String(n.key || ''),
+            // 智能类型兼容
+            value: Object.prototype.hasOwnProperty.call(n, 'value') ? coerceValueType(n.value) : '',
+            secret: !!n.secret,
+          }))
+        : [],
     };
     const fixed = sanitizeConfig({ ...cfg, globals: incoming });
     db.set('config_groups', fixed).write();
@@ -287,14 +331,16 @@ async function upsertGlobal(ctx) {
     const globals = cfg.globals || { inheritSystemEnv: true, items: [] };
     const items = Array.isArray(globals.items) ? globals.items : [];
     const idx = items.findIndex((it) => it && String(it.key) === String(key));
+    // 保留原始类型；字符串执行智能类型转换
+    const rawValue = Object.prototype.hasOwnProperty.call((ctx.request.body || {}), 'value') ? coerceValueType(value) : '';
     if (idx >= 0) {
-      items[idx] = { ...items[idx], key: String(key), value: value == null ? '' : String(value), secret: !!(secret ?? items[idx].secret) };
+      items[idx] = { ...items[idx], key: String(key), value: rawValue, secret: !!(secret ?? items[idx].secret) };
     } else {
-      items.push({ key: String(key), value: value == null ? '' : String(value), secret: !!secret });
+      items.push({ key: String(key), value: rawValue, secret: !!secret });
     }
     const fixed = sanitizeConfig({ ...cfg, globals: { ...globals, items } });
     db.set('config_groups', fixed).write();
-    ctx.body = { success: true, data: { key: String(key), value: value == null ? '' : String(value), secret: !!secret } };
+    ctx.body = { success: true, data: { key: String(key), value: rawValue, secret: !!secret } };
   } catch (error) {
     ctx.status = 500; ctx.body = { success: false, message: error.message };
   }

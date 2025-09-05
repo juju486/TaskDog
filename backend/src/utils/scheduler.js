@@ -5,6 +5,66 @@ const { readScriptFile, resolveScriptFullPath } = require('./fileManager');
 const fs = require('fs-extra');
 const path = require('path');
 
+// 新增：多格式环境变量展开（支持 ${VAR}、$VAR、%VAR%、~）
+function expandEnvLike(input, envMap = {}, extraMap = {}) {
+  if (input == null) return input;
+  if (typeof input !== 'string') return input;
+
+  // 构造查找表：优先 extraMap（globals），再 envMap（系统）
+  const base = Object.create(null);
+  const setKV = (k, v) => { if (k) base[String(k)] = v == null ? '' : String(v); };
+  for (const [k, v] of Object.entries(envMap)) setKV(k, v);
+  for (const [k, v] of Object.entries(extraMap)) setKV(k, v);
+
+  // 递归展开，限制最大深度避免循环引用
+  let str = input;
+  const maxDepth = 5;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    const before = str;
+
+    // ~ -> HOME/USERPROFILE（仅在开头，且后面是 / 或 \ 或 结束）
+    const homeDir = base.HOME || base.USERPROFILE || process.env.HOME || process.env.USERPROFILE || '';
+    str = str.replace(/^(~)(?=$|[\/])/, homeDir);
+
+    // ${VAR}（允许中文及符号，直到遇到 }）
+    str = str.replace(/\$\{([^}]+)\}/g, (_, key) => {
+      const k = String(key).trim();
+      return Object.prototype.hasOwnProperty.call(base, k) ? String(base[k]) : '';
+    });
+
+    // %VAR%（Windows 风格，仅字母数字下划线）
+    str = str.replace(/%([A-Za-z0-9_]+)%/g, (_, key) => {
+      const k = String(key);
+      return Object.prototype.hasOwnProperty.call(base, k) ? String(base[k]) : '';
+    });
+
+    // $VAR（类 Unix，变量名：字母/下划线开头）
+    str = str.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (m, key, offset, s) => {
+      const prev = offset > 0 ? s[offset - 1] : '';
+      if (/^[A-Za-z0-9_]$/.test(prev)) return m; // 前一个是标识符字符则不替换
+      const k = String(key);
+      return Object.prototype.hasOwnProperty.call(base, k) ? String(base[k]) : '';
+    });
+
+    if (str === before) break;
+  }
+  return str;
+}
+
+// 新增：对任意值进行递归展开（对象/数组内的字符串也会展开）
+function deepExpand(value, envMap = {}, extraMap = {}) {
+  if (typeof value === 'string') return expandEnvLike(value, envMap, extraMap);
+  if (Array.isArray(value)) return value.map((v) => deepExpand(v, envMap, extraMap));
+  if (value && typeof value === 'object') {
+    const out = Array.isArray(value) ? [] : {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = deepExpand(v, envMap, extraMap);
+    }
+    return out;
+  }
+  return value;
+}
+
 // 新增：构建执行环境变量（来自配置中的 globals）
 function buildExecutionEnv() {
   try {
@@ -15,18 +75,37 @@ function buildExecutionEnv() {
     const env = inherit ? { ...process.env } : {};
     const items = Array.isArray(globals.items) ? globals.items : [];
 
-    // 注入各键到进程环境（大写下划线）
+    // 组装可用映射：系统 env + 原始 globals 键值（原样 key 与归一化 KEY）
+    const extraMap = Object.create(null);
+    for (const it of items) {
+      if (!it || !it.key) continue;
+      const rawKey = String(it.key);
+      const normKey = rawKey.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      let strVal = '';
+      if (Object.prototype.hasOwnProperty.call(it, 'value')) {
+        const v = it.value;
+        strVal = typeof v === 'string' ? v : JSON.stringify(v);
+      }
+      extraMap[rawKey] = strVal;
+      extraMap[normKey] = strVal;
+    }
+    
+    // 注入各键到子进程环境（大写下划线），值支持多格式变量展开；对象则 JSON 字符串化后注入
     for (const it of items) {
       if (!it || !it.key) continue;
       const normKey = String(it.key).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-      env[normKey] = it.value == null ? '' : String(it.value);
+      const rawVal = Object.prototype.hasOwnProperty.call(it, 'value') ? it.value : '';
+      const expanded = deepExpand(rawVal, env, extraMap);
+      env[normKey] = typeof expanded === 'string' ? expanded : JSON.stringify(expanded);
     }
 
-    // 以 JSON 形式注入供 shim 使用，保留原始 Key
+    // 以 JSON 形式注入供 shim 使用，保留原始 Key 与原始类型（对象递归展开字符串）
     const kv = {};
     for (const it of items) {
       if (!it || !it.key) continue;
-      kv[String(it.key)] = it.value == null ? '' : String(it.value);
+      const rawKey = String(it.key);
+      const rawVal = Object.prototype.hasOwnProperty.call(it, 'value') ? it.value : '';
+      kv[rawKey] = deepExpand(rawVal, env, extraMap);
     }
     env.TASKDOG_GLOBALS_JSON = JSON.stringify(kv);
 

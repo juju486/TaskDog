@@ -98,3 +98,5 @@ backend/build/
 
 # Local configuration files
 backend/src/config/local.js
+
+backend/data/taskdog.json

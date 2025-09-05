@@ -39,7 +39,8 @@ function buildTDFromEnv() {
       });
       clearTimeout(timeout);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      store.set(String(key), value == null ? '' : String(value));
+      // 本地缓存保留原始类型（对象/数组/数字/布尔/字符串）
+      store.set(String(key), value);
       return true;
     } catch (e) {
       clearTimeout(timeout);
