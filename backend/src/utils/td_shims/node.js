@@ -4,6 +4,19 @@
 // - Update via TD.set(key, value) -> writes to backend config_groups.globals (single upsert)
 
 // 使用 Node >=18 的全局 fetch，避免对 axios 的依赖
+const path = require('path')
+
+function loadCommonUtils() {
+  // 优先从脚本工作目录加载 backend/scripts/utils/common.js
+  try { return require(path.join(process.cwd(), 'utils', 'common.js')) } catch {}
+  // 回退：从源码目录相对定位到 backend/scripts/utils/common.js
+  try { return require(path.resolve(__dirname, '../../../scripts/utils/common.js')) } catch {}
+  return null
+}
+
+const COMMON_UTILS = loadCommonUtils()
+
+const TD_UTILS = COMMON_UTILS
 
 function buildTDFromEnv() {
   const json = process.env.TASKDOG_GLOBALS_JSON || '{}';
@@ -38,6 +51,10 @@ function buildTDFromEnv() {
   const handler = {
     get(target, prop) {
       if (prop === 'set') return tdSet;
+      if (prop === 'utils') return TD_UTILS;
+      if (typeof prop !== 'symbol' && Object.prototype.hasOwnProperty.call(TD_UTILS, prop)) {
+        return TD_UTILS[prop];
+      }
       if (prop === 'toJSON') return () => Object.fromEntries(store);
       if (prop === 'inspect') return () => Object.fromEntries(store);
       if (typeof prop === 'symbol') return undefined;
