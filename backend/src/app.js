@@ -3,7 +3,6 @@ const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const cors = require('koa-cors');
 const logger = require('koa-logger');
-const path = require('path');
 const http = require('http');
 const net = require('net');
 
@@ -37,7 +36,7 @@ app.use(router.routes());
 app.use(router.allowedMethods());
 
 // 错误处理
-app.on('error', (err, ctx) => {
+app.on('error', (err, _ctx) => {
   console.error('Server error:', err);
 });
 
@@ -114,6 +113,12 @@ async function init() {
       } else {
         throw new Error(`No available port found near ${DEFAULT_PORT}. Please free the port and retry.`);
       }
+    }
+
+    // 对外暴露实际端口给调度器/脚本（TD.set 用）
+    process.env.PORT = String(port);
+    if (!process.env.TASKDOG_API_URL) {
+      process.env.TASKDOG_API_URL = `http://127.0.0.1:${port}`;
     }
 
     app.listen(port, () => {

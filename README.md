@@ -319,3 +319,46 @@ A: 确认前后端服务都已启动，检查防火墙设置。
 ---
 
 **TaskDog** - 让脚本管理变得简单高效！ 🐕
+
+---
+
+## 模块化重构与依赖管理（新增）
+
+- 后端已模块化：业务逻辑位于 `src/controllers/*`，路由绑定位于 `src/routes/*`，应用入口为 `src/app.js`。
+- 配置采用分组结构并持久化于 `backend/data/taskdog.json` 的 `config_groups` 字段。
+- 新增依赖管理能力（Node/Python），默认在 `backend/scripts/` 目录下安装脚本依赖。
+
+### 配置接口（分组）
+- GET `/api/config/all`：返回完整 `config_groups`（读取时会进行结构校验与自修复）。
+- PUT `/api/config/all`：覆盖保存完整配置（保存时同样校验并修复缺失字段）。
+- PUT `/api/config/globals`：一次性替换全局变量分组（inheritSystemEnv, items）。
+- POST `/api/config/globals/set`：单个变量 upsert（{ key, value, secret }）。
+
+### 依赖管理接口
+- GET `/api/config/deps/list?lang=node|python`：列出已安装依赖。
+- POST `/api/config/deps/install`：安装依赖 `{ lang, name, version? }`。
+- POST `/api/config/deps/uninstall`：卸载依赖 `{ lang, name }`。
+- GET `/api/config/deps/info?lang=node|python&name=<pkg>`：查看依赖详情。
+
+实现说明：
+- Node 依赖安装到 `backend/scripts/node_modules`（必要时自动生成 `package.json`）。
+- Python 依赖安装到 `backend/scripts/.python_packages/`（使用 `pip -t`）。
+
+### 配置结构自修复（重要）
+- 若手动编辑导致 `config_groups` 缺项或类型不符，后端在 GET/PUT `/api/config/all`、以及全局变量写入相关接口时会自动：
+  - 回填必需分组与字段到合理默认；
+  - 规范化布尔/数字/字符串类型；
+  - 兼容旧字段（如 `notification.notification_email`）。
+- 这可以避免无效配置导致的运行时错误，无需手动清理 JSON。
+
+### TD Shim（Node）
+- 位置：`backend/src/utils/td_shims/node.js`。
+- 作用：为 Node 脚本提供全局对象 `TD`（读取 `TD.KEY`/`TD['原始Key']`），并提供 `TD.set(key, value, {secret?})` 写回后端全局变量。
+- 依赖：使用 Node >= 18 的原生 `fetch`，不再依赖第三方 HTTP 库（如 axios）。
+- 环境变量：
+  - `TASKDOG_GLOBALS_JSON`（由调度器注入）：当前可用的键值对（保留原始 Key）。
+  - `TASKDOG_API_URL`：后端地址，默认 `http://127.0.0.1:3001`。
+
+### 注意
+- 脚本内的 Node 包请通过“依赖管理”在 `backend/scripts/` 下安装，这样脚本位于同目录即可正常 `require()`。
+- Python 依赖安装后位于 `.python_packages`，脚本运行时由后端注入工作目录，常见包可直接 `import`。
