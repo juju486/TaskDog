@@ -144,7 +144,7 @@
     </div>
 
     <!-- 日志详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="日志详情" width="700px">
+    <el-dialog v-model="detailDialogVisible" title="日志详情" width="900px">
       <div v-if="currentLog" class="log-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="类型">
@@ -168,9 +168,59 @@
           <div class="log-content">{{ currentLog.message }}</div>
         </div>
 
-        <div v-if="currentLog.details" class="log-section">
-          <h4>详细信息</h4>
-          <pre class="log-details">{{ formatDetails(currentLog.details) }}</pre>
+        <div v-if="currentLog.details != null" class="log-section">
+          <div class="log-toolbar">
+            <h4>详细信息</h4>
+            <div class="toolbar-actions">
+              <el-select v-model="detailViewMode" size="small" style="width: 140px">
+                <el-option label="原始" value="raw" />
+                <el-option label="JSON" value="json" />
+                <el-option label="NDJSON" value="ndjson" />
+                <el-option label="表格" value="table" />
+                <el-option label="KV" value="kv" />
+              </el-select>
+              <el-button size="small" @click="copyDetails">复制</el-button>
+              <el-button size="small" @click="downloadDetails">下载</el-button>
+            </div>
+          </div>
+
+          <!-- 原始 -->
+          <pre v-if="detailViewMode === 'raw'" class="log-details">{{ detailsRaw }}</pre>
+
+          <!-- JSON 格式化 -->
+          <template v-else-if="detailViewMode === 'json'">
+            <pre v-if="detailsAsJsonOk" class="log-details">{{ detailsJsonPretty }}</pre>
+            <el-empty v-else description="非 JSON 内容，无法格式化" />
+          </template>
+
+          <!-- NDJSON（逐行 JSON） -->
+          <template v-else-if="detailViewMode === 'ndjson'">
+            <div v-if="ndjsonLines.length" class="ndjson-list">
+              <div v-for="(line, idx) in ndjsonLines" :key="idx" class="ndjson-item">
+                <div class="ndjson-index">#{{ idx + 1 }}</div>
+                <pre class="log-details">{{ line }}</pre>
+              </div>
+            </div>
+            <el-empty v-else description="没有可解析的行" />
+          </template>
+
+          <!-- 表格展示（JSON 数组或 NDJSON 对象行） -->
+          <template v-else-if="detailViewMode === 'table'">
+            <el-table v-if="tableRows.length" :data="tableRows" height="300" border>
+              <el-table-column v-for="col in tableColumns" :key="col" :prop="col" :label="col" :min-width="120" show-overflow-tooltip />
+            </el-table>
+            <el-empty v-else description="无法从内容构建表格" />
+          </template>
+
+          <!-- KV（单对象键值） -->
+          <template v-else-if="detailViewMode === 'kv'">
+            <el-descriptions v-if="kvPairs.length" :column="1" border>
+              <el-descriptions-item v-for="it in kvPairs" :key="it.k" :label="it.k">
+                <span class="kv-value">{{ it.v }}</span>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-empty v-else description="非对象结构，无可展示 KV" />
+          </template>
         </div>
       </div>
     </el-dialog>
@@ -204,7 +254,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Refresh, Delete, Document, SuccessFilled, CircleCloseFilled,
@@ -251,6 +301,8 @@ const cleanupForm = ref({
   days: 30,
   type: ''
 });
+
+const detailViewMode = ref('raw')
 
 // 方法
 const fetchLogs = async () => {
@@ -376,6 +428,138 @@ const formatDetails = (details) => {
     return details;
   }
 };
+
+const detailsRaw = computed(() => {
+  if (!currentLog.value) return ''
+  const d = currentLog.value.details
+  if (d == null) return ''
+  if (typeof d === 'string') {
+    // 尝试解析被 JSON.stringify 包裹的字符串
+    try {
+      const parsed = JSON.parse(d)
+      if (typeof parsed === 'string') return parsed
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return d
+    }
+  }
+  try { return JSON.stringify(d, null, 2) } catch { return String(d) }
+})
+
+function tryParseJSONDeep(input) {
+  if (typeof input !== 'string') return null
+  let text = input
+  for (let i = 0; i < 3; i++) {
+    try {
+      const parsed = JSON.parse(text)
+      if (typeof parsed === 'string') { text = parsed; continue }
+      return parsed
+    } catch (e) {
+      break
+    }
+  }
+  return null
+}
+
+const detailsAsJson = computed(() => {
+  if (!currentLog.value) return null
+  const d = currentLog.value.details
+  try {
+    if (typeof d === 'string') {
+      const deep = tryParseJSONDeep(d)
+      if (deep !== null) return deep
+      return JSON.parse(d)
+    }
+    return d
+  } catch { return null }
+})
+
+const detailsAsJsonOk = computed(() => detailsAsJson.value != null && (typeof detailsAsJson.value === 'object'))
+const detailsJsonPretty = computed(() => detailsAsJsonOk.value ? JSON.stringify(detailsAsJson.value, null, 2) : '')
+
+const ndjsonLines = computed(() => {
+  const raw = detailsRaw.value
+  if (!raw) return []
+  const lines = raw.split(/\r?\n/).filter(Boolean)
+  return lines.map((ln) => {
+    try { return JSON.stringify(JSON.parse(ln), null, 2) } catch { return ln }
+  })
+})
+
+function collectObjectsFromContent() {
+  // 优先 JSON 数组/对象；退化到 NDJSON 行内对象
+  const objs = []
+  const d = detailsAsJson.value
+  if (Array.isArray(d)) {
+    for (const it of d) { if (it && typeof it === 'object') objs.push(it) }
+  } else if (d && typeof d === 'object') {
+    objs.push(d)
+  } else {
+    const raw = detailsRaw.value
+    for (const ln of raw.split(/\r?\n/)) {
+      try {
+        const v = JSON.parse(ln)
+        if (v && typeof v === 'object') objs.push(v)
+      } catch {}
+    }
+  }
+  return objs
+}
+
+const tableRows = computed(() => collectObjectsFromContent())
+const tableColumns = computed(() => {
+  const set = new Set()
+  for (const r of tableRows.value) {
+    Object.keys(r).forEach(k => set.add(k))
+  }
+  return Array.from(set)
+})
+
+const kvPairs = computed(() => {
+  const d = detailsAsJson.value
+  if (d && !Array.isArray(d) && typeof d === 'object') {
+    return Object.keys(d).map(k => ({ k, v: safeToString(d[k]) }))
+  }
+  return []
+})
+
+function safeToString(v) {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  try { return JSON.stringify(v) } catch { return String(v) }
+}
+
+async function copyDetails() {
+  try {
+    const text =
+      detailViewMode.value === 'raw' ? detailsRaw.value :
+      detailViewMode.value === 'json' ? detailsJsonPretty.value :
+      detailViewMode.value === 'ndjson' ? ndjsonLines.value.join('\n\n') :
+      detailViewMode.value === 'table' ? JSON.stringify(tableRows.value, null, 2) :
+      JSON.stringify(Object.fromEntries(kvPairs.value.map(it => [it.k, it.v])), null, 2)
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败')
+  }
+}
+
+function downloadDetails() {
+  const filename = `log_${currentLog.value?.id || 'details'}.txt`
+  const content =
+    detailViewMode.value === 'raw' ? detailsRaw.value :
+    detailViewMode.value === 'json' ? detailsJsonPretty.value :
+    detailViewMode.value === 'ndjson' ? ndjsonLines.value.join('\n\n') :
+    detailViewMode.value === 'table' ? JSON.stringify(tableRows.value, null, 2) :
+    JSON.stringify(Object.fromEntries(kvPairs.value.map(it => [it.k, it.v])), null, 2)
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // 生命周期
 onMounted(() => {
@@ -547,4 +731,11 @@ watch(() => filters.value.keyword, debouncedSearch);
   font-size: 12px;
   color: #909399;
 }
+
+.log-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.ndjson-list { display: grid; gap: 8px; }
+.ndjson-item { border: 1px dashed #e4e7ed; border-radius: 6px; padding: 8px; background: #fafafa; }
+.ndjson-index { font-size: 12px; color: #909399; margin-bottom: 6px; }
+.kv-value { white-space: pre-wrap; word-break: break-all; }
 </style>
