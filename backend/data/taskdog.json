@@ -1,33 +1,6 @@
 {
   "scripts": [
     {
-      "id": 1,
-      "name": "系统健康检查",
-      "description": "检查系统CPU、内存和磁盘使用情况",
-      "language": "powershell",
-      "file_path": "scripts/system_health_check.ps1",
-      "created_at": "2025-01-10T10:00:00.000Z",
-      "updated_at": "2025-01-10T10:00:00.000Z"
-    },
-    {
-      "id": 4,
-      "name": "网络连接测试",
-      "description": "测试常用网站的连通性和网络延迟",
-      "language": "powershell",
-      "file_path": "scripts/network_connection_test.ps1",
-      "created_at": "2025-01-10T11:30:00.000Z",
-      "updated_at": "2025-01-10T11:30:00.000Z"
-    },
-    {
-      "id": 5,
-      "name": "test",
-      "description": "tset",
-      "language": "node",
-      "file_path": "scripts/test.js",
-      "created_at": "2025-09-04T10:32:55.668Z",
-      "updated_at": "2025-09-04T10:32:55.668Z"
-    },
-    {
       "id": 6,
       "name": "环境变量示例（Node）",
       "description": "读取 TASKDOG_GREETING 环境变量",
