@@ -113,6 +113,60 @@
   ],
   "logs": [
     {
+      "id": 78,
+      "type": "success",
+      "message": "Task completed in 322ms (2 script(s))",
+      "script_id": 6,
+      "task_id": 8,
+      "details": "{\"duration\":322,\"results\":[{\"script_id\":6,\"name\":\"环境变量示例（Node）\",\"duration\":219,\"success\":true,\"exitCode\":0,\"stdout\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"stderr\":\"\",\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"error\":\"\"},{\"script_id\":5,\"name\":\"test\",\"duration\":96,\"success\":true,\"exitCode\":0,\"stdout\":\"test\",\"stderr\":\"\",\"output\":\"test\",\"error\":\"\"}]}",
+      "created_at": "2025-09-05T10:21:55.741Z"
+    },
+    {
+      "id": 77,
+      "type": "success",
+      "message": "Script \"test\" completed in 96ms",
+      "script_id": 5,
+      "task_id": 8,
+      "details": "{\"duration\":96,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:21:55.739Z"
+    },
+    {
+      "id": 76,
+      "type": "info",
+      "message": "Script #2/2 \"test\" started",
+      "script_id": 5,
+      "task_id": 8,
+      "details": null,
+      "created_at": "2025-09-05T10:21:55.642Z"
+    },
+    {
+      "id": 75,
+      "type": "success",
+      "message": "Script \"环境变量示例（Node）\" completed in 219ms",
+      "script_id": 6,
+      "task_id": 8,
+      "details": "{\"duration\":219,\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:21:55.640Z"
+    },
+    {
+      "id": 74,
+      "type": "info",
+      "message": "Script #1/2 \"环境变量示例（Node）\" started",
+      "script_id": 6,
+      "task_id": 8,
+      "details": null,
+      "created_at": "2025-09-05T10:21:55.419Z"
+    },
+    {
+      "id": 73,
+      "type": "info",
+      "message": "Task \"继发test\" started (2 script(s))",
+      "script_id": null,
+      "task_id": 8,
+      "details": null,
+      "created_at": "2025-09-05T10:21:55.417Z"
+    },
+    {
       "id": 72,
       "type": "success",
       "message": "Task completed successfully in 230ms",
@@ -660,60 +714,6 @@
       "task_id": null,
       "details": null,
       "created_at": "2025-09-04T10:32:58.177Z"
-    },
-    {
-      "id": 73,
-      "type": "info",
-      "message": "Task \"继发test\" started (2 script(s))",
-      "script_id": null,
-      "task_id": 8,
-      "details": null,
-      "created_at": "2025-09-05T10:21:55.417Z"
-    },
-    {
-      "id": 74,
-      "type": "info",
-      "message": "Script #1/2 \"环境变量示例（Node）\" started",
-      "script_id": 6,
-      "task_id": 8,
-      "details": null,
-      "created_at": "2025-09-05T10:21:55.419Z"
-    },
-    {
-      "id": 75,
-      "type": "success",
-      "message": "Script \"环境变量示例（Node）\" completed in 219ms",
-      "script_id": 6,
-      "task_id": 8,
-      "details": "{\"duration\":219,\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"exitCode\":0}",
-      "created_at": "2025-09-05T10:21:55.640Z"
-    },
-    {
-      "id": 76,
-      "type": "info",
-      "message": "Script #2/2 \"test\" started",
-      "script_id": 5,
-      "task_id": 8,
-      "details": null,
-      "created_at": "2025-09-05T10:21:55.642Z"
-    },
-    {
-      "id": 77,
-      "type": "success",
-      "message": "Script \"test\" completed in 96ms",
-      "script_id": 5,
-      "task_id": 8,
-      "details": "{\"duration\":96,\"output\":\"test\",\"exitCode\":0}",
-      "created_at": "2025-09-05T10:21:55.739Z"
-    },
-    {
-      "id": 78,
-      "type": "success",
-      "message": "Task completed in 322ms (2 script(s))",
-      "script_id": 6,
-      "task_id": 8,
-      "details": "{\"duration\":322,\"results\":[{\"script_id\":6,\"name\":\"环境变量示例（Node）\",\"duration\":219,\"success\":true,\"exitCode\":0,\"stdout\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"stderr\":\"\",\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"error\":\"\"},{\"script_id\":5,\"name\":\"test\",\"duration\":96,\"success\":true,\"exitCode\":0,\"stdout\":\"test\",\"stderr\":\"\",\"output\":\"test\",\"error\":\"\"}]}",
-      "created_at": "2025-09-05T10:21:55.741Z"
     }
   ],
   "_meta": {
@@ -723,6 +723,29 @@
     "nextLogId": 79
   },
   "config_groups": {
+    "playwright": {
+      "browser": "chromium",
+      "headless": true,
+      "slowMo": 0,
+      "baseURL": "",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "proxy": {
+        "server": "",
+        "username": "",
+        "password": ""
+      },
+      "userAgent": "",
+      "locale": "zh-CN",
+      "timezoneId": "Asia/Shanghai",
+      "storageStatePath": "",
+      "video": "off",
+      "screenshot": "only-on-failure",
+      "downloadsPath": "",
+      "autoInstallBrowsers": false
+    },
     "system": {
       "log_level": "info",
       "max_concurrent_tasks": "3"

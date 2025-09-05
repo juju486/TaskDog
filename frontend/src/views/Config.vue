@@ -27,6 +27,8 @@
             <SectionExecution :model="configObj" />
           </el-tab-pane>
 
+          <!-- 已移除：Playwright 配置，改到“工具配置”页面 -->
+
           <el-tab-pane label="调度" name="scheduler">
             <SectionScheduler :model="configObj" />
           </el-tab-pane>
@@ -80,6 +82,7 @@ import SectionGlobals from './config/SectionGlobals.vue'
 import SectionDeps from './config/SectionDeps.vue'
 import SectionBackup from './config/SectionBackup.vue'
 import SectionSecrets from './config/SectionSecrets.vue'
+// 已移除：Playwright 组件导入
 
 const activeTab = ref('system')
 const savingAll = ref(false)
@@ -103,6 +106,23 @@ const defaultConfig = () => ({
     maxUploadKB: 512,
     pathIsolation: true
   },
+  // 新增：Playwright 默认配置（与 helper 对齐）
+  playwright: {
+    browser: 'chromium',
+    headless: true,
+    slowMo: 0,
+    baseURL: '',
+    viewport: { width: 1280, height: 800 },
+    proxy: { server: '', username: '', password: '' },
+    userAgent: '',
+    locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
+    storageStatePath: '',
+    video: 'off',
+    screenshot: 'only-on-failure',
+    downloadsPath: '',
+    autoInstallBrowsers: false,
+  },
   scheduler: { schedulerTz: 'Asia/Shanghai', overlapPolicy: 'skip', catchup: false, jitterMs: 5000, retry: { maxAttempts: 1, backoffMs: 30000 } },
   logging: { level: 'info', retainDays: 30, captureMaxKB: 256, redactKeys: ['token','password'], rotate: { maxSizeMB: 10, maxFiles: 5 } },
   notify: { webhook: { enabled: false, items: [] }, email: { enabled: false, host: '', port: 465, user: '', from: '', useTLS: true }, on: { taskStart: false, taskSuccess: false, taskError: true } },
@@ -121,7 +141,7 @@ const loadAll = async () => {
       const data = res.data || {}
       // 合并默认与已有，确保缺省字段存在
       configObj.value = { ...defaultConfig(), ...data }
-      // 深合并关键分组，先取默认值+安全默认变量，再展开
+      // 深合并关键分组
       const def = defaultConfig()
       const exec = data.execution || {}
       const execInterps = (exec && exec.interpreters) || {}
@@ -134,9 +154,12 @@ const loadAll = async () => {
       const ui = data.ui || {}
       const globals = data.globals || {}
       const backup = data.backup || {}
+      const pw = data.playwright || {}
 
       configObj.value.execution = { ...def.execution, ...exec }
       configObj.value.execution.interpreters = { ...def.execution.interpreters, ...execInterps }
+      // 新增：合并 Playwright
+      configObj.value.playwright = { ...def.playwright, ...pw }
       configObj.value.scheduler = { ...def.scheduler, ...sched }
       configObj.value.logging = { ...def.logging, ...logg }
       configObj.value.notify = { ...def.notify, ...notif }

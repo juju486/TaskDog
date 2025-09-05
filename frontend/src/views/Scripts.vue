@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <ScriptHeader v-model="searchText" @create="showCreateDialog" @search="handleSearch" />
+    <ScriptHeader v-model="searchText" @create="showCreateDialog" @search="handleSearch" @create-pw-sample="createPwSample" />
 
     <div class="page-content">
       <ScriptTable
@@ -53,6 +53,19 @@ const handleSearch = () => {}
 const showCreateDialog = () => {
   isEdit.value = false
   formData.value = { name: '', description: '', language: 'shell', content: '' }
+  dialogVisible.value = true
+}
+
+const createPwSample = async () => {
+  // 生成一个可直接运行的 Node 脚本示例，调用通用 Playwright 工具
+  const sample = {
+    name: 'Playwright 示例：访问网页截图',
+    description: '使用通用 Playwright 工具访问 example.com 并保存截图',
+    language: 'node',
+    content: `// 自动化示例：访问网页并截图\n// 依赖：配置-依赖 安装 playwright；如需浏览器：在 backend/scripts 执行 npx playwright install\n// 可在“工具配置”页面调整全局 Playwright 参数\nconst { createPWToolkit } = require('./utils/playwrightHelper')\n\n;(async () => {\n  const pw = await createPWToolkit({ headless: true }) // 可覆盖部分参数\n  try {\n    const page = await pw.newPage()\n    await page.goto(pw.withBaseURL('https://example.com'))\n    await page.screenshot({ path: 'example.png', fullPage: true })\n    console.log('已保存截图到 example.png')\n  } catch (e) {\n    console.error('示例运行出错:', e)\n    process.exitCode = 1\n  } finally {\n    await pw.close()\n  }\n})()\n`
+  }
+  isEdit.value = false
+  formData.value = sample
   dialogVisible.value = true
 }
 
