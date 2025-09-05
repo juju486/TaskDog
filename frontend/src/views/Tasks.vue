@@ -7,6 +7,7 @@
         :tasks="taskStore.tasks"
         :loading="taskStore.loading"
         :search-text="searchText"
+        @runOnce="runOnce"
         @start="startTask"
         @stop="stopTask"
         @edit="editTask"
@@ -46,8 +47,9 @@ const isEdit = ref(false)
 const saving = ref(false)
 
 const formData = ref({
+  id: undefined,
   name: '',
-  script_id: null,
+  script_ids: [],
   cron_expression: '',
   status: 'inactive'
 })
@@ -56,13 +58,14 @@ const handleSearch = () => {}
 
 const showCreateDialog = () => {
   isEdit.value = false
-  formData.value = { name: '', script_id: null, cron_expression: '', status: 'inactive' }
+  formData.value = { id: undefined, name: '', script_ids: [], cron_expression: '', status: 'inactive' }
   dialogVisible.value = true
 }
 
 const editTask = (task) => {
   isEdit.value = true
-  formData.value = { ...task }
+  const ids = Array.isArray(task?.script_ids) ? task.script_ids : (task?.script_id ? [task.script_id] : [])
+  formData.value = { id: task.id, name: task.name, script_ids: ids, cron_expression: task.cron_expression, status: task.status }
   dialogVisible.value = true
 }
 
@@ -106,6 +109,19 @@ const startTask = async (task) => {
 
 const stopTask = async (task) => {
   try { await taskStore.stopTask(task.id); ElMessage.success('任务停止成功') } catch { ElMessage.error('任务停止失败') }
+}
+
+const runOnce = async (task) => {
+  try {
+    const result = await taskStore.runOnce(task.id)
+    if (result?.success) {
+      ElMessage.success('执行完成')
+    } else {
+      ElMessage.warning('执行结束（可能失败），请查看日志')
+    }
+  } catch (e) {
+    ElMessage.error('执行失败')
+  }
 }
 
 onMounted(() => {

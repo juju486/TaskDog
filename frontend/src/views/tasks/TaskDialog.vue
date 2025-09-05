@@ -11,12 +11,15 @@
         <el-input v-model="localForm.name" placeholder="请输入任务名称" />
       </el-form-item>
 
-      <el-form-item label="关联脚本" prop="script_id">
+      <el-form-item label="关联脚本" prop="script_ids">
         <el-select
-          v-model="localForm.script_id"
-          placeholder="请选择要执行的脚本"
+          v-model="localForm.script_ids"
+          multiple
+          placeholder="请选择要执行的脚本（可多选，按选择顺序依次执行）"
           style="width: 100%"
           :loading="scriptLoading"
+          collapse-tags
+          collapse-tags-tooltip
         >
           <el-option
             v-for="script in scripts"
@@ -25,6 +28,9 @@
             :value="script.id"
           />
         </el-select>
+        <div class="form-tip">
+          <p>可多选，顺序即执行顺序。</p>
+        </div>
       </el-form-item>
 
       <el-form-item label="定时规则" prop="cron_expression">
@@ -72,19 +78,37 @@ const emit = defineEmits(['update:modelValue', 'confirm', 'closed'])
 const visible = ref(false)
 const formRef = ref()
 const localForm = ref({
+  id: undefined,
   name: '',
-  script_id: null,
+  script_ids: [],
   cron_expression: '',
   status: 'inactive'
 })
 
 watch(() => props.modelValue, (v) => visible.value = v)
-watch(() => props.form, (v) => localForm.value = { ...localForm.value, ...v }, { immediate: true })
+watch(
+  () => props.form,
+  (v) => {
+    const ids = Array.isArray(v?.script_ids)
+      ? v.script_ids
+      : (v?.script_id ? [v.script_id] : [])
+    // 仅合并必要字段，避免将无关数据带入
+    localForm.value = {
+      ...localForm.value,
+      id: v?.id,
+      name: v?.name ?? '',
+      cron_expression: v?.cron_expression ?? '',
+      status: v?.status ?? 'inactive',
+      script_ids: ids
+    }
+  },
+  { immediate: true }
+)
 watch(visible, (v) => emit('update:modelValue', v))
 
 const rules = {
   name: [ { required: true, message: '请输入任务名称', trigger: 'blur' } ],
-  script_id: [ { required: true, message: '请选择关联脚本', trigger: 'change' } ],
+  script_ids: [ { type: 'array', required: true, min: 1, message: '请至少选择一个脚本', trigger: 'change' } ],
   cron_expression: [ { required: true, message: '请输入定时规则', trigger: 'blur' } ]
 }
 
@@ -93,7 +117,14 @@ const close = () => { visible.value = false }
 const confirm = async () => {
   if (!formRef.value) return
   await formRef.value.validate()
-  emit('confirm', { ...localForm.value })
+  const payload = {
+    id: localForm.value.id,
+    name: localForm.value.name,
+    cron_expression: localForm.value.cron_expression,
+    status: localForm.value.status,
+    script_ids: localForm.value.script_ids
+  }
+  emit('confirm', payload)
 }
 </script>
 

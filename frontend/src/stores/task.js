@@ -35,9 +35,12 @@ export const useTaskStore = defineStore('task', {
     
     async updateTask(id, taskData) {
       try {
-        await taskApi.update(id, taskData)
+        const response = await taskApi.update(id, taskData)
+        const updated = response?.data || null
         const index = this.tasks.findIndex(t => t.id === id)
-        if (index !== -1) {
+        if (index !== -1 && updated) {
+          this.tasks[index] = { ...this.tasks[index], ...updated }
+        } else if (index !== -1) {
           this.tasks[index] = { ...this.tasks[index], ...taskData }
         }
       } catch (error) {
@@ -78,6 +81,21 @@ export const useTaskStore = defineStore('task', {
         }
       } catch (error) {
         console.error('Failed to stop task:', error)
+        throw error
+      }
+    },
+
+    async runOnce(id) {
+      try {
+        const response = await taskApi.runOnce(id)
+        const refreshed = response?.data?.task
+        if (refreshed) {
+          const index = this.tasks.findIndex(t => t.id === id)
+          if (index !== -1) this.tasks[index] = { ...this.tasks[index], ...refreshed }
+        }
+        return response?.data?.result
+      } catch (error) {
+        console.error('Failed to run task once:', error)
         throw error
       }
     }

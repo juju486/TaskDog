@@ -16,5 +16,6 @@ router.delete('/:id', taskController.remove);
 router.patch('/:id/toggle', taskController.toggle);
 router.post('/:id/start', taskController.start);
 router.post('/:id/stop', taskController.stop);
+router.post('/:id/runOnce', taskController.runOnce);
 
 module.exports = router;

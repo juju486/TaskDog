@@ -72,6 +72,11 @@ export const taskApi = {
   // 停止任务
   stop(id) {
     return api.post(`/tasks/${id}/stop`)
+  },
+
+  // 立即执行一次
+  runOnce(id) {
+    return api.post(`/tasks/${id}/runOnce`)
   }
 }
 

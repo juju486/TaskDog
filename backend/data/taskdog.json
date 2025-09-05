@@ -37,7 +37,42 @@
       "updated_at": "2025-09-04T12:00:00.000Z"
     }
   ],
-  "scheduled_tasks": [],
+  "scheduled_tasks": [
+    {
+      "id": 6,
+      "name": "测试定时",
+      "script_id": 6,
+      "cron_expression": "* * * * *",
+      "status": "inactive",
+      "created_at": "2025-09-05T08:53:12.732Z",
+      "updated_at": "2025-09-05T08:53:37.699Z",
+      "last_run": "2025-09-05T10:11:19.191Z"
+    },
+    {
+      "id": 7,
+      "name": "测试2",
+      "script_id": 5,
+      "cron_expression": "*/5 * * * *",
+      "status": "inactive",
+      "created_at": "2025-09-05T08:59:03.508Z",
+      "updated_at": "2025-09-05T10:04:16.987Z",
+      "last_run": "2025-09-05T10:11:09.580Z"
+    },
+    {
+      "id": 8,
+      "name": "继发test",
+      "script_ids": [
+        6,
+        5
+      ],
+      "cron_expression": "* * * * *",
+      "status": "inactive",
+      "created_at": "2025-09-05T10:21:24.256Z",
+      "updated_at": "2025-09-05T10:21:24.257Z",
+      "script_id": 6,
+      "last_run": "2025-09-05T10:21:55.416Z"
+    }
+  ],
   "configs": [
     {
       "id": 1,
@@ -77,6 +112,375 @@
     }
   ],
   "logs": [
+    {
+      "id": 72,
+      "type": "success",
+      "message": "Task completed successfully in 230ms",
+      "script_id": 6,
+      "task_id": 6,
+      "details": "{\"duration\":230,\"output\":\"[2025-09-05T10:11:19.286Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:11:19.286Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 16:49:26\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:11:19\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:11:19.425Z"
+    },
+    {
+      "id": 71,
+      "type": "info",
+      "message": "Task \"测试定时\" started",
+      "script_id": 6,
+      "task_id": 6,
+      "details": null,
+      "created_at": "2025-09-05T10:11:19.192Z"
+    },
+    {
+      "id": 70,
+      "type": "success",
+      "message": "Task completed successfully in 97ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":97,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:11:09.680Z"
+    },
+    {
+      "id": 69,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T10:11:09.581Z"
+    },
+    {
+      "id": 68,
+      "type": "success",
+      "message": "Task completed successfully in 108ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":108,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:10:57.838Z"
+    },
+    {
+      "id": 67,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T10:10:57.728Z"
+    },
+    {
+      "id": 66,
+      "type": "info",
+      "message": "Task stopped manually",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T10:04:16.989Z"
+    },
+    {
+      "id": 65,
+      "type": "success",
+      "message": "Task completed successfully in 100ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":100,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:00:00.986Z"
+    },
+    {
+      "id": 64,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T10:00:00.884Z"
+    },
+    {
+      "id": 63,
+      "type": "success",
+      "message": "Task completed successfully in 92ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":92,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:55:00.275Z"
+    },
+    {
+      "id": 62,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:55:00.181Z"
+    },
+    {
+      "id": 61,
+      "type": "success",
+      "message": "Task completed successfully in 93ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":93,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:50:00.576Z"
+    },
+    {
+      "id": 60,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:50:00.482Z"
+    },
+    {
+      "id": 59,
+      "type": "success",
+      "message": "Task completed successfully in 114ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":114,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:45:00.874Z"
+    },
+    {
+      "id": 58,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:45:00.758Z"
+    },
+    {
+      "id": 57,
+      "type": "success",
+      "message": "Task completed successfully in 91ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":91,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:40:00.193Z"
+    },
+    {
+      "id": 56,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:40:00.100Z"
+    },
+    {
+      "id": 55,
+      "type": "success",
+      "message": "Task completed successfully in 90ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":90,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:35:00.438Z"
+    },
+    {
+      "id": 54,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:35:00.346Z"
+    },
+    {
+      "id": 53,
+      "type": "success",
+      "message": "Task completed successfully in 120ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":120,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:30:00.693Z"
+    },
+    {
+      "id": 52,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:30:00.570Z"
+    },
+    {
+      "id": 51,
+      "type": "success",
+      "message": "Task completed successfully in 99ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":99,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:25:00.869Z"
+    },
+    {
+      "id": 50,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:25:00.768Z"
+    },
+    {
+      "id": 49,
+      "type": "success",
+      "message": "Task completed successfully in 97ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":97,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:20:00.200Z"
+    },
+    {
+      "id": 48,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:20:00.101Z"
+    },
+    {
+      "id": 47,
+      "type": "success",
+      "message": "Task completed successfully in 107ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":107,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:15:00.421Z"
+    },
+    {
+      "id": 46,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:15:00.312Z"
+    },
+    {
+      "id": 45,
+      "type": "success",
+      "message": "Task completed successfully in 107ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":107,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:10:00.699Z"
+    },
+    {
+      "id": 44,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:10:00.590Z"
+    },
+    {
+      "id": 43,
+      "type": "success",
+      "message": "Task completed successfully in 94ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":94,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:05:00.866Z"
+    },
+    {
+      "id": 42,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:05:00.769Z"
+    },
+    {
+      "id": 41,
+      "type": "success",
+      "message": "Task completed successfully in 95ms",
+      "script_id": 5,
+      "task_id": 7,
+      "details": "{\"duration\":95,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T09:00:00.217Z"
+    },
+    {
+      "id": 40,
+      "type": "info",
+      "message": "Task \"测试2\" started",
+      "script_id": 5,
+      "task_id": 7,
+      "details": null,
+      "created_at": "2025-09-05T09:00:00.119Z"
+    },
+    {
+      "id": 39,
+      "type": "info",
+      "message": "Task stopped manually",
+      "script_id": 5,
+      "task_id": 6,
+      "details": null,
+      "created_at": "2025-09-05T08:53:19.010Z"
+    },
+    {
+      "id": 38,
+      "type": "info",
+      "message": "Task started manually",
+      "script_id": 5,
+      "task_id": 6,
+      "details": null,
+      "created_at": "2025-09-05T08:53:18.154Z"
+    },
+    {
+      "id": 37,
+      "type": "info",
+      "message": "Task stopped manually",
+      "script_id": 5,
+      "task_id": 6,
+      "details": null,
+      "created_at": "2025-09-05T08:53:17.296Z"
+    },
+    {
+      "id": 36,
+      "type": "info",
+      "message": "Task started manually",
+      "script_id": 5,
+      "task_id": 6,
+      "details": null,
+      "created_at": "2025-09-05T08:53:15.726Z"
+    },
+    {
+      "id": 35,
+      "type": "success",
+      "message": "Script test completed successfully in 239ms",
+      "script_id": 6,
+      "task_id": null,
+      "details": "{\"duration\":239,\"output\":\"[2025-09-05T08:49:26.833Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T08:49:26.833Z] TD['问候语'] = undefined\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 16:49:26\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"error\":\"\",\"exitCode\":0}",
+      "created_at": "2025-09-05T08:49:26.975Z"
+    },
+    {
+      "id": 34,
+      "type": "info",
+      "message": "Testing script: 环境变量示例（Node）",
+      "script_id": 6,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-09-05T08:49:26.734Z"
+    },
+    {
+      "id": 33,
+      "type": "error",
+      "message": "Script test failed: D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:30\r\n    throw err;\r\n    ^\r\n\r\nError: Cannot find module 'axios'. Please install it via backend (npm i axios) or via Config -> Deps (Node).\r\n    at resolveAxios (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:28:17)\r\n    at Object.<anonymous> (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:34:15)\r\n    at Module._compile (node:internal/modules/cjs/loader:1730:14)\r\n    at Object..js (node:internal/modules/cjs/loader:1895:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1465:32)\r\n    at Function._load (node:internal/modules/cjs/loader:1282:12)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\r\n    at node:internal/modules/cjs/loader:2045:12 {\r\n  cause: Error: Cannot find module 'axios'\r\n  Require stack:\r\n  - D:\\work\\other\\TaskDog\\backend\\src\\node_modules\\noop.js\r\n      at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\r\n      at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\r\n      at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\r\n      at Function._load (node:internal/modules/cjs/loader:1211:37)\r\n      at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n      at Module.require (node:internal/modules/cjs/loader:1487:12)\r\n      at require (node:internal/modules/helpers:135:16)\r\n      at resolveAxios (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:24:12)\r\n      at Object.<anonymous> (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:34:15) {\r\n    code: 'MODULE_NOT_FOUND',\r\n    requireStack: [ 'D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\node_modules\\\\noop.js' ]\r\n  }\r\n}\r\n\r\nNode.js v22.16.0",
+      "script_id": 6,
+      "task_id": null,
+      "details": "{\"duration\":103,\"output\":\"\",\"error\":\"D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:30\\r\\n    throw err;\\r\\n    ^\\r\\n\\r\\nError: Cannot find module 'axios'. Please install it via backend (npm i axios) or via Config -> Deps (Node).\\r\\n    at resolveAxios (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:28:17)\\r\\n    at Object.<anonymous> (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:34:15)\\r\\n    at Module._compile (node:internal/modules/cjs/loader:1730:14)\\r\\n    at Object..js (node:internal/modules/cjs/loader:1895:10)\\r\\n    at Module.load (node:internal/modules/cjs/loader:1465:32)\\r\\n    at Function._load (node:internal/modules/cjs/loader:1282:12)\\r\\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\\r\\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\\r\\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\\r\\n    at node:internal/modules/cjs/loader:2045:12 {\\r\\n  cause: Error: Cannot find module 'axios'\\r\\n  Require stack:\\r\\n  - D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\node_modules\\\\noop.js\\r\\n      at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\\r\\n      at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\\r\\n      at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\\r\\n      at Function._load (node:internal/modules/cjs/loader:1211:37)\\r\\n      at TracingChannel.traceSync (node:diagnostics_channel:322:14)\\r\\n      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\\r\\n      at Module.require (node:internal/modules/cjs/loader:1487:12)\\r\\n      at require (node:internal/modules/helpers:135:16)\\r\\n      at resolveAxios (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:24:12)\\r\\n      at Object.<anonymous> (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:34:15) {\\r\\n    code: 'MODULE_NOT_FOUND',\\r\\n    requireStack: [ 'D:\\\\\\\\work\\\\\\\\other\\\\\\\\TaskDog\\\\\\\\backend\\\\\\\\src\\\\\\\\node_modules\\\\\\\\noop.js' ]\\r\\n  }\\r\\n}\\r\\n\\r\\nNode.js v22.16.0\",\"exitCode\":1}",
+      "created_at": "2025-09-05T08:35:14.925Z"
+    },
+    {
+      "id": 32,
+      "type": "info",
+      "message": "Testing script: 环境变量示例（Node）",
+      "script_id": 6,
+      "task_id": null,
+      "details": null,
+      "created_at": "2025-09-05T08:35:14.819Z"
+    },
     {
       "id": 31,
       "type": "error",
@@ -258,146 +662,65 @@
       "created_at": "2025-09-04T10:32:58.177Z"
     },
     {
-      "id": 11,
-      "type": "success",
-      "message": "Script test completed successfully in 2848ms",
-      "script_id": 1,
-      "task_id": null,
-      "details": "{\"duration\":2848,\"output\":\"=== 系统健康检�?===\\nCPU使用率： 37 %\\n内存使用率： 71.42 %\\n磁盘 C: 使用率： 64.1 %\\n磁盘 D: 使用率： 48.81 %\",\"error\":\"\",\"exitCode\":0}",
-      "created_at": "2025-09-04T10:19:45.780Z"
-    },
-    {
-      "id": 10,
+      "id": 73,
       "type": "info",
-      "message": "Testing script: 系统健康检查",
-      "script_id": 1,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-09-04T10:19:42.931Z"
-    },
-    {
-      "id": 9,
-      "type": "error",
-      "message": "Script test failed: ����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~~~~~~~~~~~~~~~~~\r\n����ʽ������а�������ı�ǡ�www.aliyun.com\"},\r\n    @{Name=\"微软\"; Host=\"www.microsoft.com\"},\r\n    @{Name=\"谷歌DNS\"; Host=\"8.8.8.8\"}\r\n)\r\n# 测试每个目标\r\nforeach ($target in $targets) {\r\n    Write-Host \"\\n测试����\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~\r\n��ϣ�ı���������\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:31 �ַ�: 29\r\n+ Write-Host \"\\n=== 测试完成 ===\" -ForegroundColor Green\r\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\r\n�ַ���ȱ����ֹ��: \"��\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:32 �ַ�: 2\r\n+ \r\n�ӱ���ʽ��ȱ���ҡ�)����\r\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\r\n    + FullyQualifiedErrorId : UnexpectedToken",
-      "script_id": 4,
-      "task_id": null,
-      "details": "{\"duration\":398,\"output\":\"\",\"error\":\"����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~~~~~~~~~~~~~~~~~\\r\\n����ʽ������а�������ı�ǡ�www.aliyun.com\\\"},\\r\\n    @{Name=\\\"微软\\\"; Host=\\\"www.microsoft.com\\\"},\\r\\n    @{Name=\\\"谷歌DNS\\\"; Host=\\\"8.8.8.8\\\"}\\r\\n)\\r\\n# 测试每个目标\\r\\nforeach ($target in $targets) {\\r\\n    Write-Host \\\"\\\\n测试����\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~\\r\\n��ϣ�ı���������\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:31 �ַ�: 29\\r\\n+ Write-Host \\\"\\\\n=== 测试完成 ===\\\" -ForegroundColor Green\\r\\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\\r\\n�ַ���ȱ����ֹ��: \\\"��\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:32 �ַ�: 2\\r\\n+ \\r\\n�ӱ���ʽ��ȱ���ҡ�)����\\r\\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\\r\\n    + FullyQualifiedErrorId : UnexpectedToken\",\"exitCode\":1}",
-      "created_at": "2025-09-04T10:19:25.765Z"
-    },
-    {
-      "id": 8,
-      "type": "info",
-      "message": "Testing script: 网络连接测试",
-      "script_id": 4,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-09-04T10:19:25.365Z"
-    },
-    {
-      "id": 7,
-      "type": "error",
-      "message": "Task failed: ����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~~~~~~~~~~~~~~~~~\r\n����ʽ������а�������ı�ǡ�www.aliyun.com\"},\r\n    @{Name=\"微软\"; Host=\"www.microsoft.com\"},\r\n    @{Name=\"谷歌DNS\"; Host=\"8.8.8.8\"}\r\n)\r\n# 测试每个目标\r\nforeach ($target in $targets) {\r\n    Write-Host \"\\n测试����\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:8 �ַ�: 26\r\n+     @{Name=\"阿里�?; Host=\"www.aliyun.com\"},\r\n+                          ~\r\n��ϣ�ı���������\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:31 �ַ�: 29\r\n+ Write-Host \"\\n=== 测试完成 ===\" -ForegroundColor Green\r\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\r\n�ַ���ȱ����ֹ��: \"��\r\n����λ�� D:\\work\\other\\TaskDog\\backend\\scripts\\network_connection_test.ps1:32 �ַ�: 2\r\n+ \r\n�ӱ���ʽ��ȱ���ҡ�)����\r\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\r\n    + FullyQualifiedErrorId : UnexpectedToken",
-      "script_id": 4,
-      "task_id": 4,
-      "details": "{\"duration\":375,\"error\":\"����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~~~~~~~~~~~~~~~~~\\r\\n����ʽ������а�������ı�ǡ�www.aliyun.com\\\"},\\r\\n    @{Name=\\\"微软\\\"; Host=\\\"www.microsoft.com\\\"},\\r\\n    @{Name=\\\"谷歌DNS\\\"; Host=\\\"8.8.8.8\\\"}\\r\\n)\\r\\n# 测试每个目标\\r\\nforeach ($target in $targets) {\\r\\n    Write-Host \\\"\\\\n测试����\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:8 �ַ�: 26\\r\\n+     @{Name=\\\"阿里�?; Host=\\\"www.aliyun.com\\\"},\\r\\n+                          ~\\r\\n��ϣ�ı���������\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:31 �ַ�: 29\\r\\n+ Write-Host \\\"\\\\n=== 测试完成 ===\\\" -ForegroundColor Green\\r\\n+                             ~~~~~~~~~~~~~~~~~~~~~~~~\\r\\n�ַ���ȱ����ֹ��: \\\"��\\r\\n����λ�� D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\scripts\\\\network_connection_test.ps1:32 �ַ�: 2\\r\\n+ \\r\\n�ӱ���ʽ��ȱ���ҡ�)����\\r\\n    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException\\r\\n    + FullyQualifiedErrorId : UnexpectedToken\",\"output\":\"\",\"exitCode\":1}",
-      "created_at": "2025-09-04T10:00:01.193Z"
-    },
-    {
-      "id": 6,
-      "type": "info",
-      "message": "Task \"网络状态检查\" started",
-      "script_id": 4,
-      "task_id": 4,
-      "details": null,
-      "created_at": "2025-09-04T10:00:00.816Z"
-    },
-    {
-      "id": 5,
-      "type": "success",
-      "message": "脚本 '网络连接测试' 创建成功",
-      "script_id": 4,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-01-10T11:30:00.000Z"
-    },
-    {
-      "id": 4,
-      "type": "info",
-      "message": "配置项 'backup_retention_days' 已更新",
+      "message": "Task \"继发test\" started (2 script(s))",
       "script_id": null,
-      "task_id": null,
-      "details": "{\"old_value\": \"7\", \"new_value\": \"30\"}",
-      "created_at": "2025-01-10T10:30:00.000Z"
-    },
-    {
-      "id": 3,
-      "type": "success",
-      "message": "定时任务 '每日系统检查' 创建成功",
-      "script_id": 1,
-      "task_id": 1,
+      "task_id": 8,
       "details": null,
-      "created_at": "2025-01-10T10:01:00.000Z"
+      "created_at": "2025-09-05T10:21:55.417Z"
     },
     {
-      "id": 2,
-      "type": "success",
-      "message": "脚本 '系统健康检查' 创建成功",
-      "script_id": 1,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-01-10T10:00:00.000Z"
-    },
-    {
-      "id": 1,
+      "id": 74,
       "type": "info",
-      "message": "系统启动完成",
-      "script_id": null,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-01-10T09:00:00.000Z"
-    },
-    {
-      "id": 32,
-      "type": "info",
-      "message": "Testing script: 环境变量示例（Node）",
+      "message": "Script #1/2 \"环境变量示例（Node）\" started",
       "script_id": 6,
-      "task_id": null,
+      "task_id": 8,
       "details": null,
-      "created_at": "2025-09-05T08:35:14.819Z"
+      "created_at": "2025-09-05T10:21:55.419Z"
     },
     {
-      "id": 33,
-      "type": "error",
-      "message": "Script test failed: D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:30\r\n    throw err;\r\n    ^\r\n\r\nError: Cannot find module 'axios'. Please install it via backend (npm i axios) or via Config -> Deps (Node).\r\n    at resolveAxios (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:28:17)\r\n    at Object.<anonymous> (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:34:15)\r\n    at Module._compile (node:internal/modules/cjs/loader:1730:14)\r\n    at Object..js (node:internal/modules/cjs/loader:1895:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1465:32)\r\n    at Function._load (node:internal/modules/cjs/loader:1282:12)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\r\n    at node:internal/modules/cjs/loader:2045:12 {\r\n  cause: Error: Cannot find module 'axios'\r\n  Require stack:\r\n  - D:\\work\\other\\TaskDog\\backend\\src\\node_modules\\noop.js\r\n      at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\r\n      at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\r\n      at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\r\n      at Function._load (node:internal/modules/cjs/loader:1211:37)\r\n      at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n      at Module.require (node:internal/modules/cjs/loader:1487:12)\r\n      at require (node:internal/modules/helpers:135:16)\r\n      at resolveAxios (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:24:12)\r\n      at Object.<anonymous> (D:\\work\\other\\TaskDog\\backend\\src\\utils\\td_shims\\node.js:34:15) {\r\n    code: 'MODULE_NOT_FOUND',\r\n    requireStack: [ 'D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\node_modules\\\\noop.js' ]\r\n  }\r\n}\r\n\r\nNode.js v22.16.0",
-      "script_id": 6,
-      "task_id": null,
-      "details": "{\"duration\":103,\"output\":\"\",\"error\":\"D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:30\\r\\n    throw err;\\r\\n    ^\\r\\n\\r\\nError: Cannot find module 'axios'. Please install it via backend (npm i axios) or via Config -> Deps (Node).\\r\\n    at resolveAxios (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:28:17)\\r\\n    at Object.<anonymous> (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:34:15)\\r\\n    at Module._compile (node:internal/modules/cjs/loader:1730:14)\\r\\n    at Object..js (node:internal/modules/cjs/loader:1895:10)\\r\\n    at Module.load (node:internal/modules/cjs/loader:1465:32)\\r\\n    at Function._load (node:internal/modules/cjs/loader:1282:12)\\r\\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\\r\\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\\r\\n    at Module.require (node:internal/modules/cjs/loader:1487:12)\\r\\n    at node:internal/modules/cjs/loader:2045:12 {\\r\\n  cause: Error: Cannot find module 'axios'\\r\\n  Require stack:\\r\\n  - D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\node_modules\\\\noop.js\\r\\n      at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\\r\\n      at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\\r\\n      at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\\r\\n      at Function._load (node:internal/modules/cjs/loader:1211:37)\\r\\n      at TracingChannel.traceSync (node:diagnostics_channel:322:14)\\r\\n      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\\r\\n      at Module.require (node:internal/modules/cjs/loader:1487:12)\\r\\n      at require (node:internal/modules/helpers:135:16)\\r\\n      at resolveAxios (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:24:12)\\r\\n      at Object.<anonymous> (D:\\\\work\\\\other\\\\TaskDog\\\\backend\\\\src\\\\utils\\\\td_shims\\\\node.js:34:15) {\\r\\n    code: 'MODULE_NOT_FOUND',\\r\\n    requireStack: [ 'D:\\\\\\\\work\\\\\\\\other\\\\\\\\TaskDog\\\\\\\\backend\\\\\\\\src\\\\\\\\node_modules\\\\\\\\noop.js' ]\\r\\n  }\\r\\n}\\r\\n\\r\\nNode.js v22.16.0\",\"exitCode\":1}",
-      "created_at": "2025-09-05T08:35:14.925Z"
-    },
-    {
-      "id": 34,
-      "type": "info",
-      "message": "Testing script: 环境变量示例（Node）",
-      "script_id": 6,
-      "task_id": null,
-      "details": null,
-      "created_at": "2025-09-05T08:49:26.734Z"
-    },
-    {
-      "id": 35,
+      "id": 75,
       "type": "success",
-      "message": "Script test completed successfully in 239ms",
+      "message": "Script \"环境变量示例（Node）\" completed in 219ms",
       "script_id": 6,
-      "task_id": null,
-      "details": "{\"duration\":239,\"output\":\"[2025-09-05T08:49:26.833Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T08:49:26.833Z] TD['问候语'] = undefined\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 16:49:26\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"error\":\"\",\"exitCode\":0}",
-      "created_at": "2025-09-05T08:49:26.975Z"
+      "task_id": 8,
+      "details": "{\"duration\":219,\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:21:55.640Z"
+    },
+    {
+      "id": 76,
+      "type": "info",
+      "message": "Script #2/2 \"test\" started",
+      "script_id": 5,
+      "task_id": 8,
+      "details": null,
+      "created_at": "2025-09-05T10:21:55.642Z"
+    },
+    {
+      "id": 77,
+      "type": "success",
+      "message": "Script \"test\" completed in 96ms",
+      "script_id": 5,
+      "task_id": 8,
+      "details": "{\"duration\":96,\"output\":\"test\",\"exitCode\":0}",
+      "created_at": "2025-09-05T10:21:55.739Z"
+    },
+    {
+      "id": 78,
+      "type": "success",
+      "message": "Task completed in 322ms (2 script(s))",
+      "script_id": 6,
+      "task_id": 8,
+      "details": "{\"duration\":322,\"results\":[{\"script_id\":6,\"name\":\"环境变量示例（Node）\",\"duration\":219,\"success\":true,\"exitCode\":0,\"stdout\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"stderr\":\"\",\"output\":\"[2025-09-05T10:21:55.503Z] TD.TASKDOG_GREETING = Hello TaskDog\\n[2025-09-05T10:21:55.503Z] TD['问候语'] = 你好，TaskDog @ 2025/9/5 18:11:19\\nTD.set(\\\"问候语\\\", ...) -> OK\\nafter set, TD[\\\"问候语\\\"] = 你好，TaskDog @ 2025/9/5 18:21:55\\nprocess.env.TASKDOG_GREETING = Hello TaskDog\",\"error\":\"\"},{\"script_id\":5,\"name\":\"test\",\"duration\":96,\"success\":true,\"exitCode\":0,\"stdout\":\"test\",\"stderr\":\"\",\"output\":\"test\",\"error\":\"\"}]}",
+      "created_at": "2025-09-05T10:21:55.741Z"
     }
   ],
   "_meta": {
     "nextScriptId": 7,
-    "nextTaskId": 6,
+    "nextTaskId": 9,
     "nextConfigId": 5,
-    "nextLogId": 36
+    "nextLogId": 79
   },
   "config_groups": {
     "system": {
@@ -511,7 +834,7 @@
         },
         {
           "key": "问候语",
-          "value": "你好，TaskDog @ 2025/9/5 16:49:26",
+          "value": "你好，TaskDog @ 2025/9/5 18:21:55",
           "secret": false
         }
       ]

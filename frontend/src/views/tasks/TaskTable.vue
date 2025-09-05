@@ -43,9 +43,18 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
           <div class="action-buttons">
+            <el-button
+              size="small"
+              type="primary"
+              @click="$emit('runOnce', row)"
+              class="action-btn"
+            >
+              <el-icon><VideoPlay /></el-icon>
+              执行一次
+            </el-button>
             <el-button
               v-if="row.status === 'inactive'"
               size="small"
@@ -92,7 +101,7 @@ const props = defineProps({
   searchText: { type: String, default: '' }
 })
 
-const emit = defineEmits(['start', 'stop', 'edit', 'delete'])
+const emit = defineEmits(['runOnce', 'start', 'stop', 'edit', 'delete'])
 
 const filteredTasks = computed(() => {
   if (!props.searchText) return props.tasks

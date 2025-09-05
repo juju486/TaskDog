@@ -96,58 +96,79 @@ async function executeTask(task) {
   const db = getDatabase();
   
   try {
-    // 获取脚本信息
-    const script = db.get('scripts').find({ id: task.script_id }).value();
-    
-    if (!script) {
-      throw new Error(`Script with ID ${task.script_id} not found`);
+    // 归一化脚本ID数组（保持顺序）
+    const scriptIds = Array.isArray(task.script_ids) && task.script_ids.length
+      ? task.script_ids
+      : (task.script_id ? [task.script_id] : []);
+
+    if (!scriptIds.length) {
+      throw new Error('No scripts configured for this task');
     }
-    
-    // 更新最后运行时间
+
+    // 更新最后运行时间（任务级）
     db.get('scheduled_tasks')
       .find({ id: task.id })
       .assign({ last_run: new Date().toISOString() })
       .write();
-    
-    logTaskExecution(task.id, task.script_id, 'info', `Task "${task.name}" started`);
-    
+
+    logTaskExecution(task.id, null, 'info', `Task "${task.name}" started (${scriptIds.length} script(s))`);
+
     const startTime = Date.now();
-    
-    // 执行脚本
-    const result = await executeScript(script);
-    
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-    
-    if (result.success) {
-      logTaskExecution(
-        task.id, 
-        task.script_id, 
-        'success', 
-        `Task completed successfully in ${duration}ms`,
-        {
-          duration,
-          output: result.stdout,
-          exitCode: result.exitCode
-        }
-      );
-    } else {
-      logTaskExecution(
-        task.id, 
-        task.script_id, 
-        'error', 
-        `Task failed: ${result.stderr || result.error}`,
-        {
-          duration,
-          error: result.stderr || result.error,
-          output: result.stdout,
-          exitCode: result.exitCode
-        }
-      );
+    const results = [];
+    let allSuccess = true;
+
+    for (let i = 0; i < scriptIds.length; i++) {
+      const sid = scriptIds[i];
+      const script = db.get('scripts').find({ id: sid }).value();
+      if (!script) {
+        allSuccess = false;
+        logTaskExecution(task.id, sid, 'error', `Script with ID ${sid} not found`);
+        results.push({ script_id: sid, success: false, exitCode: -1, stdout: '', stderr: `Script ${sid} not found` });
+        continue; // 继续执行后续脚本
+      }
+
+      logTaskExecution(task.id, sid, 'info', `Script #${i+1}/${scriptIds.length} "${script.name}" started`);
+
+      const sStart = Date.now();
+      const result = await executeScript(script);
+      const sDuration = Date.now() - sStart;
+
+      results.push({ script_id: sid, name: script.name, duration: sDuration, ...result });
+
+      if (result.success) {
+        logTaskExecution(
+          task.id,
+          sid,
+          'success',
+          `Script "${script.name}" completed in ${sDuration}ms`,
+          { duration: sDuration, output: result.stdout, exitCode: result.exitCode }
+        );
+      } else {
+        allSuccess = false;
+        logTaskExecution(
+          task.id,
+          sid,
+          'error',
+          `Script "${script.name}" failed: ${result.stderr || result.error}`,
+          { duration: sDuration, error: result.stderr || result.error, output: result.stdout, exitCode: result.exitCode }
+        );
+      }
     }
+
+    const totalDuration = Date.now() - startTime;
+    logTaskExecution(
+      task.id,
+      scriptIds[0] || null,
+      allSuccess ? 'success' : 'error',
+      `Task ${allSuccess ? 'completed' : 'finished with errors'} in ${totalDuration}ms (${results.length} script(s))`,
+      { duration: totalDuration, results }
+    );
+
+    return { success: allSuccess, results, totalDuration };
     
   } catch (error) {
-    logTaskExecution(task.id, task.script_id, 'error', `Task execution error: ${error.message}`);
+    logTaskExecution(task.id, task.script_id || null, 'error', `Task execution error: ${error.message}`);
+    return { success: false, results: [], error: error.message };
   }
 }
 
