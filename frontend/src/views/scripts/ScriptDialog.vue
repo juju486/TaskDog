@@ -1,0 +1,171 @@
+<template>
+  <el-dialog v-model="visible" :title="isEdit ? '编辑脚本' : '创建脚本'" width="800px" :close-on-click-modal="false" @closed="$emit('closed')">
+    <el-form :model="localForm" :rules="rules" ref="formRef" label-width="80px">
+      <el-form-item label="脚本名称" prop="name">
+        <el-input v-model="localForm.name" placeholder="请输入脚本名称" />
+      </el-form-item>
+
+      <el-form-item label="描述" prop="description">
+        <el-input v-model="localForm.description" type="textarea" :rows="2" placeholder="请输入脚本描述" />
+      </el-form-item>
+
+      <el-form-item label="脚本语言" prop="language">
+        <el-select v-model="localForm.language" placeholder="请选择脚本语言">
+          <el-option label="Shell" value="shell" />
+          <el-option label="PowerShell" value="powershell" />
+          <el-option label="Python" value="python" />
+          <el-option label="Node.js" value="node" />
+          <el-option label="Bash" value="bash" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="脚本内容" prop="content">
+        <div class="content-input-section">
+          <div class="editor-toolbar">
+            <el-button size="small" @click="openFullscreenEditor">
+              <el-icon><FullScreen /></el-icon>
+              全屏编辑
+            </el-button>
+            <el-button size="small" @click="$emit('download-template', localForm)">
+              <el-icon><Download /></el-icon>
+              下载
+            </el-button>
+          </div>
+          <div class="input-mode-tabs">
+            <el-radio-group v-model="inputMode" @change="handleInputModeChange">
+              <el-radio-button label="text">手动输入</el-radio-button>
+              <el-radio-button label="file">文件上传</el-radio-button>
+              <el-radio-button label="override" v-if="isEdit">覆盖上传</el-radio-button>
+            </el-radio-group>
+          </div>
+
+          <div v-if="inputMode === 'text'" class="text-input">
+            <VueMonacoEditor v-model:value="localForm.content" :language="monacoLanguage" theme="vs-dark" class="monaco-editor" :options="monacoOptions" :style="{ height: editorHeight, width: '100%' }" />
+          </div>
+
+          <div v-else-if="inputMode === 'file'" class="file-input">
+            <el-upload ref="uploadRef" class="script-upload" :auto-upload="false" :show-file-list="true" :on-change="handleFileChange" :before-remove="handleFileRemove" accept=".ps1,.bat,.py,.js,.sh,.txt" drag>
+              <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+              <div class="el-upload__text">将脚本文件拖到此处，或<em>点击上传</em></div>
+              <template #tip>
+                <div class="el-upload__tip">支持 .ps1, .bat, .py, .js, .sh, .txt 等脚本文件</div>
+              </template>
+            </el-upload>
+
+            <div v-if="fileContent" class="file-preview">
+              <div class="preview-header">文件预览：</div>
+              <el-input v-model="fileContent" type="textarea" :rows="8" readonly style="font-family: 'Courier New', monospace" />
+            </div>
+          </div>
+
+          <div v-else-if="inputMode === 'override'" class="file-input">
+            <el-upload ref="overrideRef" class="script-upload" :auto-upload="false" :show-file-list="true" :on-change="(file)=>$emit('override', file, localForm)" accept=".ps1,.bat,.py,.js,.sh,.txt" drag>
+              <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+              <div class="el-upload__text">选择文件以覆盖当前脚本</div>
+            </el-upload>
+          </div>
+        </div>
+      </el-form-item>
+    </el-form>
+
+    <template #footer>
+      <el-button @click="visible = false">取消</el-button>
+      <el-button type="primary" @click="confirm" :loading="saving">{{ isEdit ? '更新' : '创建' }}</el-button>
+    </template>
+
+    <!-- 全屏编辑器对话框 -->
+    <el-dialog v-model="fullscreenEditorVisible" title="全屏编辑" fullscreen :close-on-click-modal="false">
+      <VueMonacoEditor v-model:value="fullscreenContent" :language="monacoLanguage" theme="vs-dark" class="monaco-editor" :options="monacoOptions" :style="{ height: 'calc(100vh - 180px)', width: '100%' }" />
+      <template #footer>
+        <el-button @click="fullscreenEditorVisible = false">取消</el-button>
+        <el-button type="primary" @click="applyFullscreenContent">应用</el-button>
+      </template>
+    </el-dialog>
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { FullScreen, Download, UploadFilled } from '@element-plus/icons-vue'
+import { VueMonacoEditor, loader } from '@guolao/vue-monaco-editor'
+
+loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } })
+
+const props = defineProps({
+  modelValue: { type: Boolean, default: false },
+  isEdit: { type: Boolean, default: false },
+  form: { type: Object, default: () => ({}) },
+  saving: { type: Boolean, default: false }
+})
+
+const emit = defineEmits(['update:modelValue', 'confirm', 'closed', 'download-template', 'override'])
+
+const visible = ref(false)
+const formRef = ref()
+const uploadRef = ref()
+const inputMode = ref('text')
+const fileContent = ref('')
+const fullscreenEditorVisible = ref(false)
+const fullscreenContent = ref('')
+
+const localForm = ref({ name: '', description: '', language: 'shell', content: '' })
+
+watch(() => props.modelValue, (v) => visible.value = v)
+watch(() => props.form, (v) => {
+  localForm.value = { ...localForm.value, ...v }
+  inputMode.value = 'text'
+  fileContent.value = ''
+}, { immediate: true })
+watch(visible, (v) => emit('update:modelValue', v))
+
+const rules = {
+  name: [ { required: true, message: '请输入脚本名称', trigger: 'blur' } ],
+  content: [ { required: true, message: '请输入脚本内容', trigger: 'blur' } ],
+  language: [ { required: true, message: '请选择脚本语言', trigger: 'change' } ]
+}
+
+const monacoOptions = { automaticLayout: true, fontSize: 14, minimap: { enabled: false }, wordWrap: 'on', tabSize: 2, insertSpaces: true, detectIndentation: false }
+
+const editorHeight = ref('420px')
+const updateEditorHeight = () => { const h = Math.min(700, Math.max(300, window.innerHeight - 320)); editorHeight.value = `${h}px` }
+
+const monacoLanguage = computed(() => {
+  const map = { powershell: 'powershell', batch: 'bat', cmd: 'bat', python: 'python', javascript: 'javascript', node: 'javascript', shell: 'shell', bash: 'shell' }
+  return map[localForm.value.language] || 'plaintext'
+})
+
+const openFullscreenEditor = () => { fullscreenContent.value = localForm.value.content || ''; fullscreenEditorVisible.value = true; setTimeout(() => window.dispatchEvent(new Event('resize')), 50) }
+const applyFullscreenContent = () => { localForm.value.content = fullscreenContent.value; fullscreenEditorVisible.value = false; setTimeout(() => window.dispatchEvent(new Event('resize')), 50) }
+
+const handleInputModeChange = (mode) => { if (mode === 'file') { localForm.value.content = '' } else { fileContent.value = ''; uploadRef.value?.clearFiles() } }
+const handleFileChange = (file) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    fileContent.value = e.target.result
+    localForm.value.content = e.target.result
+    const extension = file.name.split('.').pop().toLowerCase()
+    const languageMap = { ps1: 'powershell', bat: 'batch', py: 'python', js: 'javascript', sh: 'bash', txt: 'shell' }
+    if (languageMap[extension]) localForm.value.language = languageMap[extension]
+    if (!localForm.value.name) localForm.value.name = file.name.replace(/\.[^/.]+$/, '')
+  }
+  reader.readAsText(file.raw)
+}
+const handleFileRemove = () => { fileContent.value = ''; localForm.value.content = '' }
+
+const confirm = async () => { if (!formRef.value) return; await formRef.value.validate(); emit('confirm', { ...localForm.value }) }
+
+onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight) })
+onUnmounted(() => { window.removeEventListener('resize', updateEditorHeight) })
+</script>
+
+<style scoped>
+.content-input-section { width: 100%; }
+.editor-toolbar { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px; }
+.input-mode-tabs { margin-bottom: 16px; }
+.text-input, .file-input { width: 100%; }
+.script-upload { width: 100%; }
+.file-preview { margin-top: 16px; }
+.preview-header { margin-bottom: 8px; font-weight: 500; color: #303133; }
+.el-upload__tip { color: #909399; font-size: 12px; margin-top: 8px; }
+.monaco-editor { min-height: 320px; border: 1px solid #e4e7ed; border-radius: 4px; overflow: hidden; }
+</style>
