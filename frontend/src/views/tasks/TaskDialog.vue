@@ -44,6 +44,14 @@
             <div class="param-card__header">
               <div class="title">{{ scriptMap.get(sid)?.name || ('脚本 #' + sid) }}</div>
               <div class="tools">
+                <el-dropdown @command="(key) => insertGlobalRef(sid, key)" trigger="click">
+                  <el-button size="small" type="primary">插入变量</el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item v-for="g in globalsKeys" :key="g" :command="g">{{ g }}</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <el-button size="small" @click="fillDefault(sid)">用默认参数</el-button>
                 <el-button size="small" @click="formatOne(sid)">格式化</el-button>
                 <el-button size="small" @click="clearOne(sid)">清空</el-button>
@@ -53,7 +61,7 @@
               v-model="paramsText[sid]"
               type="textarea"
               :rows="6"
-              placeholder='该脚本的覆盖参数，JSON 对象，如 {"retries":1}'
+              placeholder='该脚本的覆盖参数，JSON 对象，如 {"cookie":"$TD:TM_COOKIES"}'
               @blur="() => validateOne(sid)"
             />
             <div v-if="paramsError[sid]" class="error-tip">{{ paramsError[sid] }}</div>
@@ -91,8 +99,9 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { configApi } from '@/api/modules'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -121,10 +130,39 @@ const localForm = ref({
 const scriptMap = computed(() => new Map(props.scripts.map(s => [s.id, s])))
 const paramsText = ref({}) // { [sid]: jsonText }
 const paramsError = ref({}) // { [sid]: errorMsg }
+const globalsKeys = ref([])
 
 const toPretty = (obj) => { try { return JSON.stringify(obj ?? {}, null, 2) } catch { return '' } }
 const ensureParamFor = (sid) => { if (!(sid in paramsText.value)) paramsText.value[sid] = toPretty({}) }
 
+const fetchGlobals = async () => {
+  try {
+    const res = await configApi.getAllGroups()
+    const data = res?.data ?? res
+    const items = data?.globals?.items || []
+    globalsKeys.value = items.map(it => it.key).filter(Boolean)
+  } catch {}
+}
+
+const insertGlobalRef = (sid, key) => {
+  try {
+    const text = paramsText.value[sid]
+    const obj = text && text.trim() ? JSON.parse(text) : {}
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      const base = 'var_' + key.toLowerCase()
+      let name = base
+      let i = 1
+      while (Object.prototype.hasOwnProperty.call(obj, name)) { name = `${base}_${i++}` }
+      obj[name] = `$TD:${key}`
+      paramsText.value[sid] = JSON.stringify(obj, null, 2)
+      paramsError.value[sid] = ''
+    }
+  } catch {
+    ElMessage.error('当前参数不是合法 JSON，无法插入变量')
+  }
+}
+
+// 其余逻辑保持不变
 const fillDefault = (sid) => {
   const s = scriptMap.value.get(sid)
   paramsText.value[sid] = toPretty(s?.default_params || {})
@@ -246,6 +284,8 @@ const confirm = async () => {
   }
   emit('confirm', payload)
 }
+
+onMounted(() => { fetchGlobals() })
 </script>
 
 <style scoped>

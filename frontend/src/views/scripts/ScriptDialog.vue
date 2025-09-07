@@ -72,6 +72,14 @@
           <div class="params-toolbar">
             <span class="tip">以 JSON 格式编辑，运行时可被任务参数覆盖；留空则默认为 {}</span>
             <div class="spacer" />
+            <el-dropdown @command="insertGlobalRefDefault">
+              <el-button size="small" type="primary">插入变量</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-for="g in globalsKeys" :key="g" :command="g">{{ g }}</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button size="small" @click="formatParams">格式化</el-button>
           </div>
           <el-input
@@ -107,6 +115,7 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { FullScreen, Download, UploadFilled } from '@element-plus/icons-vue'
 import { VueMonacoEditor, loader } from '@guolao/vue-monaco-editor'
+import { configApi } from '@/api/modules'
 
 loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } })
 
@@ -221,7 +230,36 @@ const confirm = async () => {
   emit('confirm', { ...localForm.value })
 }
 
-onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight) })
+const globalsKeys = ref([])
+const fetchGlobals = async () => {
+  try {
+    const res = await configApi.getAllGroups()
+    const data = res?.data ?? res
+    const items = data?.globals?.items || []
+    globalsKeys.value = items.map(it => it.key).filter(Boolean)
+  } catch {}
+}
+
+const insertGlobalRefDefault = (key) => {
+  try {
+    const obj = defaultParamsText.value && defaultParamsText.value.trim() ? JSON.parse(defaultParamsText.value) : {}
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      const base = 'var_' + String(key).toLowerCase()
+      let name = base
+      let i = 1
+      while (Object.prototype.hasOwnProperty.call(obj, name)) { name = `${base}_${i++}` }
+      obj[name] = `$TD:${key}`
+      defaultParamsText.value = JSON.stringify(obj, null, 2)
+      paramsError.value = ''
+    } else {
+      ElMessage.error('必须为 JSON 对象，无法插入变量')
+    }
+  } catch {
+    ElMessage.error('当前参数不是合法 JSON，无法插入变量')
+  }
+}
+
+onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight); fetchGlobals() })
 onUnmounted(() => { window.removeEventListener('resize', updateEditorHeight) })
 </script>
 

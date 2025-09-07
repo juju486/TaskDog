@@ -11,15 +11,24 @@
         <div class="toolbar">
           <span class="tip">留空等同于 {}</span>
           <div class="spacer" />
-          <el-button size="small" @click="formatParams">格式化</el-button>
+          <el-dropdown @command="insertGlobalRef" trigger="click">
+            <el-button size="small" type="primary">插入变量</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-for="g in globalsKeys" :key="g" :command="g">{{ g }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button size="small" @click="formatParams" style="margin-left: 8px">格式化</el-button>
           <el-button size="small" @click="resetToDefault">重置为默认</el-button>
         </div>
         <el-input
           v-model="paramsText"
           type="textarea"
           :rows="8"
-          placeholder='例如: {"url":"https://example.com","retries":1}'
+          placeholder='例如: {"cookie":"$TD:TM_COOKIES","retries":1}'
           @blur="validateParams"
+          ref="inputRef"
         />
         <div v-if="paramsError" class="error-tip">{{ paramsError }}</div>
       </div>
@@ -54,9 +63,10 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useScriptStore } from '@/stores/script'
+import { configApi } from '@/api/modules'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -72,6 +82,8 @@ const paramsText = ref('')
 const paramsError = ref('')
 const running = ref(false)
 const result = ref(null)
+const globalsKeys = ref([])
+const inputRef = ref()
 
 const toPretty = (obj) => {
   try { return JSON.stringify(obj ?? {}, null, 2) } catch { return '' }
@@ -84,6 +96,15 @@ const loadFromScript = (s) => {
   result.value = null
 }
 
+const fetchGlobals = async () => {
+  try {
+    const res = await configApi.getAllGroups()
+    const data = res?.data ?? res
+    const items = data?.globals?.items || []
+    globalsKeys.value = items.map(it => it.key).filter(Boolean)
+  } catch {}
+}
+
 const validateParams = () => {
   if (!paramsText.value || !paramsText.value.trim()) { paramsError.value = ''; return true }
   try {
@@ -94,6 +115,30 @@ const validateParams = () => {
   } catch (e) {
     paramsError.value = 'JSON 解析失败：' + (e?.message || '')
     return false
+  }
+}
+
+const insertGlobalRef = (key) => {
+  // 在光标处插入字符串值 "$TD:KEY"，并尽可能保持 JSON 合法
+  const token = `"$TD:${key}"`
+  if (!paramsText.value || !paramsText.value.trim()) {
+    paramsText.value = `{"key": ${token}}`
+    return
+  }
+  // 简单插入：追加一个示例键
+  try {
+    const obj = JSON.parse(paramsText.value)
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      const k = key.toLowerCase()
+      let name = 'var_' + k
+      let i = 1
+      while (Object.prototype.hasOwnProperty.call(obj, name)) { name = `var_${k}_${i++}` }
+      obj[name] = `$TD:${key}`
+      paramsText.value = JSON.stringify(obj, null, 2)
+    }
+  } catch {
+    // 若现有内容不是合法 JSON，则直接在末尾提示插入
+    paramsText.value = (paramsText.value || '') + (paramsText.value?.endsWith('\n') ? '' : '\n') + `// 在 JSON 中使用: "someKey": "$TD:${key}"\n`
   }
 }
 
@@ -132,6 +177,8 @@ const runTest = async () => {
 watch(() => props.modelValue, v => visible.value = v)
 watch(() => props.script, s => { script.value = s; loadFromScript(s) }, { immediate: true })
 watch(visible, v => emit('update:modelValue', v))
+
+onMounted(() => { fetchGlobals() })
 </script>
 
 <style scoped>

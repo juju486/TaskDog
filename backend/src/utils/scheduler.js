@@ -169,6 +169,32 @@ function normalizeScriptParams(scriptParams) {
   return out;
 }
 
+// 新增：解析参数中的全局变量引用（支持 "$TD:KEY" 与 {"$global":"KEY"}）
+function deepResolveTDRefs(value, globalsKV) {
+  if (value == null) return value;
+  const g = (globalsKV && typeof globalsKV === 'object') ? globalsKV : {};
+  if (Array.isArray(value)) return value.map((v) => deepResolveTDRefs(v, g));
+  if (typeof value === 'object') {
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === '$global' && typeof value.$global === 'string') {
+      const k = value.$global;
+      return Object.prototype.hasOwnProperty.call(g, k) ? g[k] : null;
+    }
+    const out = Array.isArray(value) ? [] : {};
+    for (const [k, v] of Object.entries(value)) out[k] = deepResolveTDRefs(v, g);
+    return out;
+  }
+  if (typeof value === 'string') {
+    const m = value.match(/^\$TD:([A-Za-z0-9_]+)$/);
+    if (m) {
+      const key = m[1];
+      return Object.prototype.hasOwnProperty.call(g, key) ? g[key] : null;
+    }
+    return value;
+  }
+  return value;
+}
+
 const scheduledJobs = new Map();
 
 async function initScheduler() {
@@ -352,9 +378,15 @@ async function executeScript(script, params = {}) {
 
     // 构建环境并注入参数
     const env = buildExecutionEnv();
+    // 解析全局变量 JSON 供参数解引用
+    let globalsKV = {};
+    try { globalsKV = JSON.parse(env.TASKDOG_GLOBALS_JSON || '{}'); } catch { globalsKV = {}; }
+    // 先解析参数里的 $TD:KEY / {"$global":"KEY"}
+    const mergedParams = isPlainObject(params) ? params : {};
+    const resolvedParams = deepResolveTDRefs(mergedParams, globalsKV);
     try {
-      env.TASKDOG_PARAMS_JSON = JSON.stringify(isPlainObject(params) ? params : {});
-      const flat = flattenParams(isPlainObject(params) ? params : {});
+      env.TASKDOG_PARAMS_JSON = JSON.stringify(resolvedParams);
+      const flat = flattenParams(isPlainObject(resolvedParams) ? resolvedParams : {});
       for (const [k, v] of Object.entries(flat)) {
         env[`TD_PARAM_${k}`] = v;
       }
