@@ -2,6 +2,13 @@ const cron = require('node-cron')
 const { getDatabase } = require('../utils/database')
 const { scheduleTask, unscheduleTask, logTaskExecution, executeTask } = require('../utils/scheduler')
 
+function isPlainObject(v) { return v && typeof v === 'object' && !Array.isArray(v) }
+function normalizeScriptParams(input) {
+  if (Array.isArray(input)) return input
+  if (isPlainObject(input)) return input
+  return undefined
+}
+
 // 查询任务列表
 async function list(ctx) {
   const db = getDatabase()
@@ -46,7 +53,7 @@ async function getById(ctx) {
 // 创建任务（支持多脚本）
 async function create(ctx) {
   const db = getDatabase()
-  const { name, script_id, script_ids, cron_expression, status = 'inactive' } = ctx.request.body
+  const { name, script_id, script_ids, cron_expression, status = 'inactive', script_params } = ctx.request.body
   if (!name || !cron_expression || (!script_id && (!Array.isArray(script_ids) || script_ids.length === 0))) {
     ctx.status = 400; ctx.body = { success: false, message: 'Name, cron_expression and script(s) are required' }; return
   }
@@ -61,6 +68,9 @@ async function create(ctx) {
     const newTask = { id: nextId, name, script_ids: ids, cron_expression, status, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
     // 兼容旧字段：保留第一个脚本为 script_id（便于旧逻辑/日志）
     newTask.script_id = ids[0]
+    // 可选：保存脚本参数（对象或数组）
+    const sp = normalizeScriptParams(script_params)
+    if (sp !== undefined) newTask.script_params = sp
 
     db.get('scheduled_tasks').push(newTask).write()
     db.set('_meta.nextTaskId', nextId + 1).write()
@@ -77,7 +87,7 @@ async function create(ctx) {
 async function update(ctx) {
   const db = getDatabase()
   const { id } = ctx.params
-  const { name, script_id, script_ids, cron_expression, status } = ctx.request.body
+  const { name, script_id, script_ids, cron_expression, status, script_params } = ctx.request.body
   try {
     const taskId = parseInt(id)
     const existingTask = db.get('scheduled_tasks').find({ id: taskId }).value()
@@ -103,6 +113,13 @@ async function update(ctx) {
       ...(typeof status === 'string' && { status }),
       ...(ids ? { script_ids: ids, script_id: ids[0] } : {}),
       updated_at: new Date().toISOString()
+    }
+
+    // 更新脚本参数（允许移除）
+    if (script_params !== undefined) {
+      const sp = normalizeScriptParams(script_params)
+      if (sp !== undefined) updatedTask.script_params = sp
+      else delete updatedTask.script_params
     }
 
     db.get('scheduled_tasks').find({ id: taskId }).assign(updatedTask).write()

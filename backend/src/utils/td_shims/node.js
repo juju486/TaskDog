@@ -19,12 +19,16 @@ const COMMON_UTILS = loadCommonUtils()
 const TD_UTILS = COMMON_UTILS
 
 function buildTDFromEnv() {
-  const json = process.env.TASKDOG_GLOBALS_JSON || '{}';
-  let map = {};
-  try { map = JSON.parse(json); } catch { map = {}; }
+  const globalsJson = process.env.TASKDOG_GLOBALS_JSON || '{}';
+  let globalsMap = {};
+  try { globalsMap = JSON.parse(globalsJson); } catch { globalsMap = {}; }
+
+  const paramsJson = process.env.TASKDOG_PARAMS_JSON || '{}';
+  let params = {};
+  try { params = JSON.parse(paramsJson); } catch { params = {}; }
 
   // Proxy to support TD.someKey and TD['变量'] access
-  const store = new Map(Object.entries(map));
+  const store = new Map(Object.entries(globalsMap));
 
   async function tdSet(key, value, opts = {}) {
     const api = process.env.TASKDOG_API_URL || 'http://127.0.0.1:3001';
@@ -49,11 +53,30 @@ function buildTDFromEnv() {
     }
   }
 
+  function getParam(key, dflt = undefined) {
+    if (key in params) return params[key];
+    const envKey = `TD_PARAM_${String(key).replace(/[^A-Za-z0-9_]/g, '_').toUpperCase()}`;
+    if (process.env[envKey] !== undefined) {
+      const raw = process.env[envKey];
+      try { return JSON.parse(raw); } catch { return raw; }
+    }
+    return dflt;
+  }
+
+  function requireParam(key) {
+    const v = getParam(key, undefined);
+    if (v === undefined) throw new Error(`Missing required param: ${key}`);
+    return v;
+  }
+
   const handler = {
     get(target, prop) {
       if (prop === 'set') return tdSet;
       if (prop === 'utils') return TD_UTILS;
-      if (typeof prop !== 'symbol' && Object.prototype.hasOwnProperty.call(TD_UTILS, prop)) {
+      if (prop === 'params') return params;
+      if (prop === 'getParam') return getParam;
+      if (prop === 'requireParam') return requireParam;
+      if (typeof prop !== 'symbol' && TD_UTILS && Object.prototype.hasOwnProperty.call(TD_UTILS, prop)) {
         return TD_UTILS[prop];
       }
       if (prop === 'toJSON') return () => Object.fromEntries(store);

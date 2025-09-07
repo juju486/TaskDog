@@ -26,9 +26,9 @@ export const scriptApi = {
     return api.delete(`/scripts/${id}`)
   },
   
-  // 测试运行脚本
-  test(id) {
-    return api.post(`/scripts/${id}/test`)
+  // 测试运行脚本（支持临时参数）
+  test(id, params) {
+    return api.post(`/scripts/${id}/test`, params ? { params } : {})
   },
 
   // 下载脚本文件

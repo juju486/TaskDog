@@ -119,6 +119,56 @@ function buildExecutionEnv() {
   }
 }
 
+// 新增：浅工具
+function isPlainObject(v) {
+  return Object.prototype.toString.call(v) === '[object Object]';
+}
+
+function deepMerge(a, b) {
+  if (!isPlainObject(a)) a = {};
+  if (!isPlainObject(b)) return { ...a };
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (isPlainObject(v) && isPlainObject(a[k])) out[k] = deepMerge(a[k], v);
+    else out[k] = v;
+  }
+  return out;
+}
+
+function flattenParams(obj, prefix = []) {
+  const entries = {};
+  if (!isPlainObject(obj)) return entries;
+  for (const [k, v] of Object.entries(obj)) {
+    const keyPath = [...prefix, k];
+    if (isPlainObject(v)) {
+      Object.assign(entries, flattenParams(v, keyPath));
+    } else {
+      const flatKey = keyPath.join('_').replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+      entries[flatKey] = typeof v === 'string' ? v : JSON.stringify(v);
+    }
+  }
+  return entries;
+}
+
+function normalizeScriptParams(scriptParams) {
+  // 支持对象形式 { [id]: params } 或 数组 [{ script_id, params }]
+  const out = {};
+  if (isPlainObject(scriptParams)) {
+    for (const [sid, p] of Object.entries(scriptParams)) {
+      const key = String(parseInt(sid, 10));
+      out[key] = isPlainObject(p) ? p : {};
+    }
+  } else if (Array.isArray(scriptParams)) {
+    for (const item of scriptParams) {
+      if (!item) continue;
+      const key = String(parseInt(item.script_id, 10));
+      if (!key || key === 'NaN') continue;
+      out[key] = isPlainObject(item.params) ? item.params : {};
+    }
+  }
+  return out;
+}
+
 const scheduledJobs = new Map();
 
 async function initScheduler() {
@@ -184,6 +234,9 @@ async function executeTask(task) {
       throw new Error('No scripts configured for this task');
     }
 
+    // 归一化任务级脚本参数
+    const taskScriptParamsMap = normalizeScriptParams(task.script_params || {});
+
     // 更新最后运行时间（任务级）
     db.get('scheduled_tasks')
       .find({ id: task.id })
@@ -206,13 +259,18 @@ async function executeTask(task) {
         continue; // 继续执行后续脚本
       }
 
+      // 计算有效参数：脚本默认参数 + 任务级覆盖
+      const baseParams = isPlainObject(script.default_params) ? script.default_params : {};
+      const overrideParams = taskScriptParamsMap[String(sid)] || {};
+      const effectiveParams = deepMerge(baseParams, overrideParams);
+
       logTaskExecution(task.id, sid, 'info', `Script #${i+1}/${scriptIds.length} "${script.name}" started`);
 
       const sStart = Date.now();
-      const result = await executeScript(script);
+      const result = await executeScript(script, effectiveParams);
       const sDuration = Date.now() - sStart;
 
-      results.push({ script_id: sid, name: script.name, duration: sDuration, ...result });
+      results.push({ script_id: sid, name: script.name, duration: sDuration, params: effectiveParams, ...result });
 
       if (result.success) {
         logTaskExecution(
@@ -251,7 +309,7 @@ async function executeTask(task) {
   }
 }
 
-async function executeScript(script) {
+async function executeScript(script, params = {}) {
   try {
     const isWin = process.platform === 'win32';
     let command, args, options = {};
@@ -291,6 +349,16 @@ async function executeScript(script) {
       args = [];
       options.shell = true;
     }
+
+    // 构建环境并注入参数
+    const env = buildExecutionEnv();
+    try {
+      env.TASKDOG_PARAMS_JSON = JSON.stringify(isPlainObject(params) ? params : {});
+      const flat = flattenParams(isPlainObject(params) ? params : {});
+      for (const [k, v] of Object.entries(flat)) {
+        env[`TD_PARAM_${k}`] = v;
+      }
+    } catch {}
     
     return new Promise((resolve) => {
       let stdout = '';
@@ -299,7 +367,7 @@ async function executeScript(script) {
       const child = spawn(command, args, {
         ...options,
         cwd: path.dirname(scriptPath),
-        env: buildExecutionEnv(),
+        env,
         windowsHide: true
       });
       
@@ -393,11 +461,15 @@ function logTaskExecution(taskId, scriptId, type, message, details = null) {
 }
 
 // 测试执行脚本（不通过定时任务）
-async function testScript(script) {
+async function testScript(script, overrideParams = undefined) {
   logTaskExecution(null, script.id, 'info', `Testing script: ${script.name}`);
   
   const startTime = Date.now();
-  const result = await executeScript(script);
+  const base = isPlainObject(script.default_params) ? script.default_params : {};
+  const params = overrideParams !== undefined && isPlainObject(overrideParams)
+    ? deepMerge(base, overrideParams)
+    : base;
+  const result = await executeScript(script, params);
   const duration = Date.now() - startTime;
   
   const logType = result.success ? 'success' : 'error';

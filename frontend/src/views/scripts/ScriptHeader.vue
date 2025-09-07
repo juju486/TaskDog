@@ -17,12 +17,7 @@
           </el-icon>
           创建脚本
         </el-button>
-        <el-button type="success" plain @click="$emit('create-pw-sample')">
-          <el-icon>
-            <MagicStick />
-          </el-icon>
-          Playwright 示例
-        </el-button>
+
       </div>
     </div>
   </div>
@@ -30,10 +25,10 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { Search, Plus, MagicStick } from '@element-plus/icons-vue'
+import { Search, Plus, MagicStick, Setting } from '@element-plus/icons-vue'
 
 const props = defineProps({ modelValue: { type: String, default: '' } })
-const emit = defineEmits(['update:modelValue', 'create', 'search', 'create-pw-sample'])
+const emit = defineEmits(['update:modelValue', 'create', 'search', 'create-pw-sample', 'create-param-sample'])
 
 const search = ref('')
 watch(() => props.modelValue, v => search.value = v, { immediate: true })

@@ -1,22 +1,15 @@
 import https from 'https';
+import { createPWToolkit } from './utils/playwrightHelper';
+!(async () => {
+  console.log('check TM cookie');
+  const cookies = await TD.TM_COOKIES;
 
-console.log('check TM cookie');
-const cookies = await TD.TM_COOKIES;
+  const log = TM.logger('checktmcookie');
+  const pw = await createPWToolkit({ headless: true });
+  
 
-// 发起请求验证
-//get https://shattrath-config.taobao.com/qianniu?t=1757084297345
-const options = {
-  hostname: 'shattrath-config.taobao.com',
-  port: 443,
-  path: '/qianniu?t=1757084297345',
-  method: 'GET',
-  headers: {
-    'Cookie': cookies.join('; ')
-  }
-};
-https.request(options, res => {
-  console.log(`res: ${res}`);
-});
+})();
+
 
 
 

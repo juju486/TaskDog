@@ -30,10 +30,81 @@ async function generateUniqueScriptPath(baseName, language, preferFilePath = nul
   return filePath;
 }
 
+// 新增：确保“参数化示例”存在（只创建一次）
+async function ensureParamSampleExists() {
+  const db = getDatabase();
+  try {
+    const name = '参数化示例：问候与重试';
+    const exists = db.get('scripts').find({ name }).value();
+    if (exists) return;
+
+    await ensureScriptsDir();
+    const id = db.get('_meta.nextScriptId').value();
+    const language = 'node';
+    const content = `// 参数化示例：读取 TD.params 并支持重试\n// 运行时参数注入：\n// - 全局/任务/测试传入的 JSON 将注入到环境变量 TASKDOG_PARAMS_JSON\n// - TD shim 提供 TD.params/TD.getParam/TD.requireParam 访问参数\n// - 任务层参数与脚本 default_params 深合并\n\n;(async () => {\n  try {\n    const name = TD.getParam('name', 'World')\n    const times = Number(TD.getParam('times', 1))\n    const failUntil = Number(TD.getParam('failUntil', 0)) // 前几次失败演示重试\n\n    let attempt = 0\n    await TD.retry(async () => {\n      attempt++\n      if (attempt <= failUntil) {\n        console.log('模拟失败，第 ' + attempt + ' 次')\n        throw new Error('Mock failure ' + attempt)\n      }\n      for (let i = 0; i < times; i++) {\n        console.log('Hello, ' + name + '! #' + (i + 1))\n        await TD.sleep(200)\n      }\n    }, { retries: Number(TD.getParam('retries', 2)), delay: Number(TD.getParam('delay', 300)) })\n\n    console.log('完成，参数为:', JSON.stringify(TD.params))\n  } catch (e) {\n    console.error('运行失败:', e && e.message ? e.message : e)\n    process.exitCode = 1\n  }\n})()\n`;
+    const filePath = await generateUniqueScriptPath(name, language);
+    await writeScriptFile(filePath, content);
+
+    const now = new Date().toISOString();
+    const script = {
+      id,
+      name,
+      description: '演示通过 default_params 与运行参数（TD.params）进行注入与重试',
+      language,
+      file_path: filePath,
+      default_params: { name: 'TaskDog', times: 2, retries: 2, delay: 300, failUntil: 0 },
+      created_at: now,
+      updated_at: now
+    };
+    db.get('scripts').push(script).write();
+    db.set('_meta.nextScriptId', id + 1).write();
+  } catch (e) {
+    console.warn('ensureParamSampleExists failed:', e && e.message ? e.message : e);
+  }
+}
+
+// 新增：确保“Playwright 工具示例”存在（只创建一次）
+async function ensurePlaywrightSampleExists() {
+  const db = getDatabase();
+  try {
+    const name = 'Playwright 示例：访问网页截图';
+    const exists = db.get('scripts').find({ name }).value();
+    if (exists) return;
+
+    await ensureScriptsDir();
+    const id = db.get('_meta.nextScriptId').value();
+    const language = 'node';
+    const content = `// 自动化示例：访问网页并截图\n// 依赖：在“配置 -> 依赖” 安装 playwright；如需浏览器：在 backend/scripts 执行 npx playwright install\n// 可在“工具配置”页面调整全局 Playwright 参数\nconst { createPWToolkit } = require('./utils/playwrightHelper')\n\n;(async () => {\n  const pw = await createPWToolkit({ headless: true }) // 可覆盖部分参数\n  try {\n    const page = await pw.newPage()\n    await page.goto(pw.withBaseURL('https://example.com'))\n    await page.screenshot({ path: 'example.png', fullPage: true })\n    console.log('已保存截图到 example.png')\n  } catch (e) {\n    console.error('示例运行出错:', e)\n    process.exitCode = 1\n  } finally {\n    await pw.close()\n  }\n})()\n`;
+    // 使用固定英文文件名，避免中文名生成空文件名
+    const filePath = await generateUniqueScriptPath(name, language, 'scripts/playwright_example_screenshot.js');
+    await writeScriptFile(filePath, content);
+
+    const now = new Date().toISOString();
+    const script = {
+      id,
+      name,
+      description: '使用通用 Playwright 工具访问 example.com 并保存截图',
+      language,
+      file_path: filePath,
+      default_params: {},
+      created_at: now,
+      updated_at: now
+    };
+    db.get('scripts').push(script).write();
+    db.set('_meta.nextScriptId', id + 1).write();
+  } catch (e) {
+    console.warn('ensurePlaywrightSampleExists failed:', e && e.message ? e.message : e);
+  }
+}
+
 // 列表
 async function list(ctx) {
   const db = getDatabase();
   try {
+    // 首次访问时自动注入示例脚本
+    await ensureParamSampleExists();
+    await ensurePlaywrightSampleExists();
+
     const scripts = db.get('scripts').orderBy(['created_at'], ['desc']).value();
     const scriptsWithContent = await Promise.all(
       (scripts || []).map(async (script) => {
@@ -73,7 +144,7 @@ async function getById(ctx) {
 // 创建
 async function create(ctx) {
   const db = getDatabase();
-  const { name, description, content, language = 'shell', file_path } = ctx.request.body;
+  const { name, description, content, language = 'shell', file_path, default_params } = ctx.request.body;
   if (!name || !content) { ctx.status = 400; ctx.body = { success: false, message: 'Name and content are required' }; return; }
   if (!isSupportedLanguage(language)) { ctx.status = 400; ctx.body = { success: false, message: 'Unsupported language' }; return; }
   try {
@@ -82,6 +153,12 @@ async function create(ctx) {
     const targetPath = await generateUniqueScriptPath(name, language, file_path);
     await writeScriptFile(targetPath, content);
     const script = { id, name, description, language, file_path: targetPath, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    // 支持默认参数
+    if (default_params !== undefined) {
+      script.default_params = default_params;
+    } else {
+      script.default_params = {};
+    }
     db.get('scripts').push(script).write();
     db.set('_meta.nextScriptId', id + 1).write();
     ctx.body = { success: true, data: { ...script, content } };
@@ -94,7 +171,7 @@ async function create(ctx) {
 async function update(ctx) {
   const db = getDatabase();
   const { id } = ctx.params;
-  const { name, description, content, language } = ctx.request.body;
+  const { name, description, content, language, default_params } = ctx.request.body;
   try {
     const script = db.get('scripts').find({ id: parseInt(id) }).value();
     if (!script) { ctx.status = 404; ctx.body = { success: false, message: 'Script not found' }; return; }
@@ -117,6 +194,8 @@ async function update(ctx) {
       description: description !== undefined ? description : script.description,
       language: language || script.language,
       file_path: newFilePath,
+      // 支持默认参数更新
+      default_params: default_params !== undefined ? default_params : (script.default_params || {}),
       updated_at: new Date().toISOString()
     }).write();
 
@@ -150,7 +229,10 @@ async function test(ctx) {
   try {
     const script = db.get('scripts').find({ id: parseInt(id) }).value();
     if (!script) { ctx.status = 404; ctx.body = { success: false, message: 'Script not found' }; return; }
-    const result = await testScript(script);
+    // 允许前端传入临时参数 { params: {...} }
+    const body = ctx.request.body || {};
+    const overrideParams = body && typeof body === 'object' ? body.params : undefined;
+    const result = await testScript(script, overrideParams);
     ctx.body = { success: true, data: { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr } };
   } catch (error) {
     ctx.status = 200;

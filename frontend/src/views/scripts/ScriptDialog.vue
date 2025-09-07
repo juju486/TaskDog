@@ -66,6 +66,24 @@
           </div>
         </div>
       </el-form-item>
+
+      <el-form-item label="默认参数" prop="default_params">
+        <div class="params-editor">
+          <div class="params-toolbar">
+            <span class="tip">以 JSON 格式编辑，运行时可被任务参数覆盖；留空则默认为 {}</span>
+            <div class="spacer" />
+            <el-button size="small" @click="formatParams">格式化</el-button>
+          </div>
+          <el-input
+            v-model="defaultParamsText"
+            type="textarea"
+            :rows="8"
+            placeholder='例如: {"url":"https://example.com","retries":2,"flags":{"headless":true}}'
+            @blur="syncParamsFromText"
+          />
+          <div v-if="paramsError" class="error-tip">{{ paramsError }}</div>
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -86,6 +104,7 @@
 
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { FullScreen, Download, UploadFilled } from '@element-plus/icons-vue'
 import { VueMonacoEditor, loader } from '@guolao/vue-monaco-editor'
 
@@ -108,13 +127,44 @@ const fileContent = ref('')
 const fullscreenEditorVisible = ref(false)
 const fullscreenContent = ref('')
 
-const localForm = ref({ name: '', description: '', language: 'shell', content: '' })
+const localForm = ref({ name: '', description: '', language: 'shell', content: '', default_params: {} })
+
+// 默认参数编辑（JSON 文本）
+const defaultParamsText = ref('')
+const paramsError = ref('')
+const syncTextFromParams = () => {
+  try {
+    defaultParamsText.value = JSON.stringify(localForm.value.default_params || {}, null, 2)
+    paramsError.value = ''
+  } catch {
+    defaultParamsText.value = ''
+  }
+}
+const syncParamsFromText = () => {
+  if (!defaultParamsText.value || !defaultParamsText.value.trim()) {
+    localForm.value.default_params = {}
+    paramsError.value = ''
+    return
+  }
+  try {
+    const obj = JSON.parse(defaultParamsText.value)
+    if (obj && typeof obj === 'object') {
+      localForm.value.default_params = obj
+      paramsError.value = ''
+    } else {
+      paramsError.value = '必须为 JSON 对象'
+    }
+  } catch (e) {
+    paramsError.value = 'JSON 解析失败：' + (e?.message || '')
+  }
+}
 
 watch(() => props.modelValue, (v) => visible.value = v)
 watch(() => props.form, (v) => {
-  localForm.value = { ...localForm.value, ...v }
+  localForm.value = { ...localForm.value, ...v, default_params: v?.default_params ?? {} }
   inputMode.value = 'text'
   fileContent.value = ''
+  syncTextFromParams()
 }, { immediate: true })
 watch(visible, (v) => emit('update:modelValue', v))
 
@@ -127,7 +177,7 @@ const rules = {
 const monacoOptions = { automaticLayout: true, fontSize: 14, minimap: { enabled: false }, wordWrap: 'on', tabSize: 2, insertSpaces: true, detectIndentation: false }
 
 const editorHeight = ref('420px')
-const updateEditorHeight = () => { const h = Math.min(700, Math.max(300, window.innerHeight - 320)); editorHeight.value = `${h}px` }
+const updateEditorHeight = () => { const h = Math.min(700, Math.max(300, window.innerHeight - 380)); editorHeight.value = `${h}px` }
 
 const monacoLanguage = computed(() => {
   const map = { powershell: 'powershell', batch: 'bat', cmd: 'bat', python: 'python', javascript: 'javascript', node: 'javascript', shell: 'shell', bash: 'shell' }
@@ -152,7 +202,24 @@ const handleFileChange = (file) => {
 }
 const handleFileRemove = () => { fileContent.value = ''; localForm.value.content = '' }
 
-const confirm = async () => { if (!formRef.value) return; await formRef.value.validate(); emit('confirm', { ...localForm.value }) }
+const formatParams = () => {
+  try {
+    const v = defaultParamsText.value && defaultParamsText.value.trim() ? JSON.parse(defaultParamsText.value) : {}
+    defaultParamsText.value = JSON.stringify(v, null, 2)
+    paramsError.value = ''
+  } catch (e) {
+    ElMessage.error('无法格式化：JSON 无效')
+  }
+}
+
+const confirm = async () => {
+  if (!formRef.value) return
+  await formRef.value.validate()
+  // 同步一次 JSON 文本到对象
+  syncParamsFromText()
+  if (paramsError.value) return ElMessage.error('默认参数不合法')
+  emit('confirm', { ...localForm.value })
+}
 
 onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight) })
 onUnmounted(() => { window.removeEventListener('resize', updateEditorHeight) })
@@ -168,4 +235,9 @@ onUnmounted(() => { window.removeEventListener('resize', updateEditorHeight) })
 .preview-header { margin-bottom: 8px; font-weight: 500; color: #303133; }
 .el-upload__tip { color: #909399; font-size: 12px; margin-top: 8px; }
 .monaco-editor { min-height: 320px; border: 1px solid #e4e7ed; border-radius: 4px; overflow: hidden; }
+.params-editor { width: 100%; }
+.params-toolbar { display: flex; align-items: center; margin-bottom: 8px; }
+.params-toolbar .tip { color: #909399; font-size: 12px; }
+.params-toolbar .spacer { flex: 1; }
+.error-tip { margin-top: 6px; color: #f56c6c; font-size: 12px; }
 </style>
