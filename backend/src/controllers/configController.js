@@ -49,6 +49,10 @@ const DEFAULT_CONFIG = {
   secrets: [],
   notification: { notification_email: 'admin@example.com' },
   globals: { inheritSystemEnv: true, items: [] },
+  // 新增：分组配置（仅名称列表，脚本与任务各自维护）
+  groups: { scriptGroups: [], taskGroups: [] },
+  // 新增：分组V2（带ID）以便稳定引用
+  groupsV2: { script: [], task: [], nextScriptGroupId: 1, nextTaskGroupId: 1 },
 };
 
 function isObject(v) { return v && typeof v === 'object' && !Array.isArray(v); }
@@ -89,6 +93,35 @@ function coerceValueType(value) {
   if (/^(true|false)$/i.test(t)) return /^true$/i.test(t);
   if (/^null$/i.test(t)) return null;
   return value;
+}
+
+// 带ID分组工具
+function normalizeGroupItemsV2(arr) {
+  // 规范：数组元素为 { id:number, name:string }
+  const out = [];
+  const seenIds = new Set();
+  const seenNames = new Set();
+  for (const it of asArray(arr, [])) {
+    if (isObject(it) && Number.isFinite(Number(it.id)) && typeof it.name === 'string' && it.name.trim()) {
+      const id = Number(it.id);
+      const name = it.name.trim();
+      if (!seenIds.has(id) && !seenNames.has(name)) {
+        out.push({ id, name });
+        seenIds.add(id); seenNames.add(name);
+      }
+    } else if (typeof it === 'string' && it.trim()) {
+      // 兼容字符串项，先占位，后续会分配ID
+      out.push({ id: undefined, name: it.trim() });
+    }
+  }
+  return out;
+}
+
+function buildNameIdMaps(items) {
+  const byId = new Map();
+  const byName = new Map();
+  for (const it of items) { if (Number.isFinite(it.id)) byId.set(it.id, it.name); if (it.name) byName.set(it.name, it.id); }
+  return { byId, byName };
 }
 
 // 规范化/修复配置对象（不会移除未知字段）
@@ -212,6 +245,60 @@ function sanitizeConfig(input) {
     }))
     .filter((it) => it.key);
   cfg.globals = { inheritSystemEnv: asBool(gIn.inheritSystemEnv, true), items };
+
+  // 新增：分组（名称列表）
+  const grpIn = isObject(cfg.groups) ? { ...cfg.groups } : {};
+  let scriptGroups = asArray(grpIn.scriptGroups, []).map((s) => asString(s)).filter(Boolean);
+  let taskGroups = asArray(grpIn.taskGroups, []).map((s) => asString(s)).filter(Boolean);
+
+  // 分组V2（带ID）
+  const grpV2In = isObject(cfg.groupsV2) ? { ...cfg.groupsV2 } : {};
+  let v2Script = normalizeGroupItemsV2(grpV2In.script);
+  let v2Task = normalizeGroupItemsV2(grpV2In.task);
+  let nextScriptGroupId = asNumber(grpV2In.nextScriptGroupId, DEFAULT_CONFIG.groupsV2.nextScriptGroupId);
+  let nextTaskGroupId = asNumber(grpV2In.nextTaskGroupId, DEFAULT_CONFIG.groupsV2.nextTaskGroupId);
+
+  // 若存在名称列表而V2为空或缺ID，则按名称补全ID
+  const needBootstrapScript = v2Script.length === 0 && scriptGroups.length > 0;
+  const needBootstrapTask = v2Task.length === 0 && taskGroups.length > 0;
+
+  if (needBootstrapScript) {
+    v2Script = scriptGroups.map((name, idx) => ({ id: idx + 1, name }));
+    nextScriptGroupId = v2Script.length + 1;
+  }
+  if (needBootstrapTask) {
+    v2Task = taskGroups.map((name, idx) => ({ id: idx + 1, name }));
+    nextTaskGroupId = v2Task.length + 1;
+  }
+
+  // 为无ID的V2项分配ID（避免重复名）
+  const assignIds = (items, nextIdStart) => {
+    const { byName } = buildNameIdMaps(items.filter((x) => Number.isFinite(x.id)));
+    let nextId = nextIdStart;
+    for (const it of items) {
+      if (!Number.isFinite(it.id)) {
+        if (byName.has(it.name)) {
+          it.id = byName.get(it.name);
+        } else {
+          it.id = nextId++;
+          byName.set(it.name, it.id);
+        }
+      }
+    }
+    return nextId;
+  };
+  nextScriptGroupId = assignIds(v2Script, nextScriptGroupId);
+  nextTaskGroupId = assignIds(v2Task, nextTaskGroupId);
+
+  // 确保名称列表与V2一致（去重）
+  const uniqByName = (arr) => Array.from(new Set(arr));
+  const v2ScriptNames = uniqByName(v2Script.map((x) => x.name));
+  const v2TaskNames = uniqByName(v2Task.map((x) => x.name));
+  scriptGroups = uniqByName(scriptGroups.concat(v2ScriptNames));
+  taskGroups = uniqByName(taskGroups.concat(v2TaskNames));
+
+  cfg.groups = { scriptGroups, taskGroups };
+  cfg.groupsV2 = { script: v2Script, task: v2Task, nextScriptGroupId, nextTaskGroupId };
 
   return cfg;
 }
@@ -341,6 +428,323 @@ async function upsertGlobal(ctx) {
     const fixed = sanitizeConfig({ ...cfg, globals: { ...globals, items } });
     db.set('config_groups', fixed).write();
     ctx.body = { success: true, data: { key: String(key), value: rawValue, secret: !!secret } };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// ====== V2 分组辅助 ======
+function getSanitizedConfig() {
+  const db = getDatabase();
+  return sanitizeConfig(db.get('config_groups').value() || {});
+}
+function saveConfig(cfg) {
+  const db = getDatabase();
+  db.set('config_groups', cfg).write();
+}
+function getGroupMaps(type) {
+  const cfg = getSanitizedConfig();
+  const list = type === 'script' ? cfg.groupsV2.script : cfg.groupsV2.task;
+  const { byId, byName } = buildNameIdMaps(list);
+  return { cfg, byId, byName, listKey: type === 'script' ? 'script' : 'task' };
+}
+
+// =============== 分组管理（新增） ===============
+// GET /config/groups?type=script|task 可选参数；不传则返回 { scriptGroups, taskGroups }
+async function listGroups(ctx) {
+  const db = getDatabase();
+  try {
+    const cfg = sanitizeConfig(db.get('config_groups').value() || {});
+    const type = String(ctx.request.query.type || '').toLowerCase();
+    if (type === 'script') { ctx.body = { success: true, data: cfg.groups.scriptGroups }; return; }
+    if (type === 'task') { ctx.body = { success: true, data: cfg.groups.taskGroups }; return; }
+    ctx.body = { success: true, data: { scriptGroups: cfg.groups.scriptGroups, taskGroups: cfg.groups.taskGroups } };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// POST /config/groups  { type: 'script'|'task', name: string }
+async function addGroup(ctx) {
+  const db = getDatabase();
+  const { type, name } = ctx.request.body || {};
+  const t = String(type || '').toLowerCase();
+  const n = String(name || '').trim();
+  if (!n) { ctx.status = 400; ctx.body = { success: false, message: 'name is required' }; return; }
+  if (t !== 'script' && t !== 'task') { ctx.status = 400; ctx.body = { success: false, message: 'type must be script|task' }; return; }
+  try {
+    const cfg = sanitizeConfig(db.get('config_groups').value() || {});
+    const key = t === 'script' ? 'scriptGroups' : 'taskGroups';
+    const arr = new Set(cfg.groups[key] || []);
+    if (!arr.has(n)) arr.add(n);
+    // 同步V2
+    const listKey = t === 'script' ? 'script' : 'task';
+    const existing = cfg.groupsV2[listKey] || [];
+    if (!existing.find((x) => x.name === n)) {
+      const id = listKey === 'script' ? cfg.groupsV2.nextScriptGroupId++ : cfg.groupsV2.nextTaskGroupId++;
+      cfg.groupsV2[listKey] = existing.concat([{ id, name: n }]);
+    }
+    const updated = { ...cfg, groups: { ...cfg.groups, [key]: Array.from(arr) }, groupsV2: cfg.groupsV2 };
+    db.set('config_groups', updated).write();
+    ctx.body = { success: true, data: updated.groups[key] };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// POST /config/groups/rename { type, oldName, newName }
+async function renameGroup(ctx) {
+  const db = getDatabase();
+  const { type, oldName, newName } = ctx.request.body || {};
+  const t = String(type || '').toLowerCase();
+  const oldN = String(oldName || '').trim();
+  const newN = String(newName || '').trim();
+  if (!oldN || !newN) { ctx.status = 400; ctx.body = { success: false, message: 'oldName and newName are required' }; return; }
+  if (t !== 'script' && t !== 'task') { ctx.status = 400; ctx.body = { success: false, message: 'type must be script|task' }; return; }
+  try {
+    const cfg = sanitizeConfig(db.get('config_groups').value() || {});
+    const key = t === 'script' ? 'scriptGroups' : 'taskGroups';
+    const list = cfg.groups[key] || [];
+    if (!list.includes(oldN)) { ctx.status = 404; ctx.body = { success: false, message: 'oldName not found' }; return; }
+    const next = list.filter(g => g !== oldN);
+    if (!next.includes(newN)) next.push(newN);
+    // 更新V2名称
+    const listKey = t === 'script' ? 'script' : 'task';
+    cfg.groupsV2[listKey] = (cfg.groupsV2[listKey] || []).map((x) => x.name === oldN ? { ...x, name: newN } : x);
+    const updatedCfg = { ...cfg, groups: { ...cfg.groups, [key]: next } };
+    db.set('config_groups', updatedCfg).write();
+
+    // 同步更新实体上的 group 与 group_id（ID保持不变，仅名称变更）
+    if (t === 'script') {
+      const scripts = db.get('scripts').value() || [];
+      const mapByName = new Map(updatedCfg.groupsV2.script.map((x) => [x.name, x.id]));
+      let changed = false;
+      for (const s of scripts) {
+        if ((s.group || '') === oldN) {
+          s.group = newN; s.group_id = mapByName.get(newN); changed = true;
+        }
+      }
+      if (changed) db.set('scripts', scripts).write();
+    } else {
+      const tasks = db.get('scheduled_tasks').value() || [];
+      const mapByName = new Map(updatedCfg.groupsV2.task.map((x) => [x.name, x.id]));
+      let changed = false;
+      for (const it of tasks) {
+        if ((it.group || '') === oldN) {
+          it.group = newN; it.group_id = mapByName.get(newN); changed = true;
+        }
+      }
+      if (changed) db.set('scheduled_tasks', tasks).write();
+    }
+
+    ctx.body = { success: true, data: updatedCfg.groups[key] };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// POST /config/groups/delete { type, name, reassignTo? }
+async function deleteGroup(ctx) {
+  const db = getDatabase();
+  const { type, name, reassignTo } = ctx.request.body || {};
+  const t = String(type || '').toLowerCase();
+  const n = String(name || '').trim();
+  const to = reassignTo != null ? String(reassignTo).trim() : undefined;
+  if (!n) { ctx.status = 400; ctx.body = { success: false, message: 'name is required' }; return; }
+  if (t !== 'script' && t !== 'task') { ctx.status = 400; ctx.body = { success: false, message: 'type must be script|task' }; return; }
+  try {
+    const cfg = sanitizeConfig(db.get('config_groups').value() || {});
+    const key = t === 'script' ? 'scriptGroups' : 'taskGroups';
+    const list = cfg.groups[key] || [];
+    if (!list.includes(n)) { ctx.status = 404; ctx.body = { success: false, message: 'group not found' }; return; }
+    const next = list.filter(g => g !== n);
+    // 仅当目标存在时才允许重定向
+    const finalReassign = to && next.includes(to) ? to : undefined;
+
+    // 从V2删除
+    const listKey = t === 'script' ? 'script' : 'task';
+    const removed = cfg.groupsV2[listKey].find((x) => x.name === n);
+    cfg.groupsV2[listKey] = cfg.groupsV2[listKey].filter((x) => x.name !== n);
+
+    const updatedCfg = { ...cfg, groups: { ...cfg.groups, [key]: next }, groupsV2: cfg.groupsV2 };
+    db.set('config_groups', updatedCfg).write();
+
+    const targetId = finalReassign ? (updatedCfg.groupsV2[listKey].find((x) => x.name === finalReassign)?.id) : undefined;
+
+    if (t === 'script') {
+      const scripts = db.get('scripts').value() || [];
+      let changed = false;
+      for (const s of scripts) {
+        if ((s.group || '') === n || (removed && s.group_id === removed.id)) {
+          if (finalReassign && targetId) { s.group = finalReassign; s.group_id = targetId; }
+          else { delete s.group; delete s.group_id; }
+          changed = true;
+        }
+      }
+      if (changed) db.set('scripts', scripts).write();
+    } else {
+      const tasks = db.get('scheduled_tasks').value() || [];
+      let changed = false;
+      for (const it of tasks) {
+        if ((it.group || '') === n || (removed && it.group_id === removed.id)) {
+          if (finalReassign && targetId) { it.group = finalReassign; it.group_id = targetId; }
+          else { delete it.group; delete it.group_id; }
+          changed = true;
+        }
+      }
+      if (changed) db.set('scheduled_tasks', tasks).write();
+    }
+
+    ctx.body = { success: true, data: updatedCfg.groups[key] };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// 新增：从现有脚本/任务中同步未登记的分组名称到配置
+// POST /config/groups/syncItems
+async function syncGroupsFromItems(ctx) {
+  const db = getDatabase();
+  try {
+    const cfg = sanitizeConfig(db.get('config_groups').value() || {});
+    const scripts = db.get('scripts').value() || [];
+    const tasks = db.get('scheduled_tasks').value() || [];
+
+    const scriptSet = new Set(cfg.groups.scriptGroups || []);
+    const taskSet = new Set(cfg.groups.taskGroups || []);
+
+    for (const s of scripts) {
+      const g = (s && typeof s.group === 'string' ? s.group.trim() : '');
+      if (g) scriptSet.add(g);
+    }
+    for (const t of tasks) {
+      const g = (t && typeof t.group === 'string' ? t.group.trim() : '');
+      if (g) taskSet.add(g);
+    }
+
+    // 同步到V2
+    const ensureV2 = (list, names, nextKey) => {
+      const byName = new Map(list.map((x) => [x.name, x.id]));
+      for (const name of names) { if (!byName.has(name)) { list.push({ id: (nextKey.value++), name }); } }
+    };
+    const nextScript = { value: cfg.groupsV2.nextScriptGroupId };
+    const nextTask = { value: cfg.groupsV2.nextTaskGroupId };
+    ensureV2(cfg.groupsV2.script, scriptSet, nextScript);
+    ensureV2(cfg.groupsV2.task, taskSet, nextTask);
+    cfg.groupsV2.nextScriptGroupId = nextScript.value;
+    cfg.groupsV2.nextTaskGroupId = nextTask.value;
+
+    const updated = { ...cfg, groups: { scriptGroups: Array.from(scriptSet), taskGroups: Array.from(taskSet) }, groupsV2: cfg.groupsV2 };
+    if (JSON.stringify(updated) !== JSON.stringify(cfg)) {
+      db.set('config_groups', updated).write();
+    }
+    ctx.body = { success: true, data: updated.groups };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// 新增：统计各分组数量与未分组数量
+// GET /config/groups/stats
+async function groupStats(ctx) {
+  const db = getDatabase();
+  try {
+    const scripts = db.get('scripts').value() || [];
+    const tasks = db.get('scheduled_tasks').value() || [];
+
+    const stat = {
+      scripts: { counts: {}, ungrouped: 0, total: scripts.length },
+      tasks: { counts: {}, ungrouped: 0, total: tasks.length },
+    };
+
+    for (const s of scripts) {
+      const g = (s && typeof s.group === 'string' ? s.group.trim() : '');
+      if (!g) { stat.scripts.ungrouped++; continue; }
+      stat.scripts.counts[g] = (stat.scripts.counts[g] || 0) + 1;
+    }
+    for (const t of tasks) {
+      const g = (t && typeof t.group === 'string' ? t.group.trim() : '');
+      if (!g) { stat.tasks.ungrouped++; continue; }
+      stat.tasks.counts[g] = (stat.tasks.counts[g] || 0) + 1;
+    }
+
+    ctx.body = { success: true, data: stat };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+// 新增：批量分配/迁移分组
+// POST /config/groups/assign
+// body: { type: 'script'|'task', toGroup?: string, ids?: number[], fromGroup?: string, allUngrouped?: boolean, clear?: boolean }
+// 说明：
+// - 优先级 ids > fromGroup > allUngrouped
+// - toGroup 提供时赋值为该组；若 clear 为 true（或 toGroup === ''），则清空分组
+async function assignGroup(ctx) {
+  const db = getDatabase();
+  const { type, toGroup, toGroupId, ids, fromGroup, fromGroupId, allUngrouped, clear } = ctx.request.body || {};
+  const t = String(type || '').toLowerCase();
+  if (t !== 'script' && t !== 'task') { ctx.status = 400; ctx.body = { success: false, message: 'type must be script|task' }; return; }
+
+  const cfg = getSanitizedConfig();
+  const list = t === 'script' ? cfg.groupsV2.script : cfg.groupsV2.task;
+  const { byId, byName } = buildNameIdMaps(list);
+
+  const wantClear = !!clear || (typeof toGroup === 'string' && toGroup.trim() === '') || (toGroupId === 0);
+  let targetGroup = undefined; // name
+  let targetId = undefined; // id
+  if (!wantClear) {
+    if (Number.isFinite(Number(toGroupId))) {
+      const id = Number(toGroupId);
+      const name = byId.get(id);
+      if (!name) { ctx.status = 400; ctx.body = { success: false, message: 'Invalid toGroupId' }; return; }
+      targetId = id; targetGroup = name;
+    } else if (typeof toGroup === 'string' && toGroup.trim()) {
+      const n = toGroup.trim();
+      const id = byName.get(n);
+      if (id) { targetId = id; targetGroup = n; }
+      else { ctx.status = 400; ctx.body = { success: false, message: 'toGroup not exists' }; return; }
+    } else {
+      ctx.status = 400; ctx.body = { success: false, message: 'toGroup is required (or set clear=true to remove group)' }; return;
+    }
+  }
+
+  try {
+    const key = t === 'script' ? 'scripts' : 'scheduled_tasks';
+    const items = db.get(key).value() || [];
+
+    let selectedIds = null;
+    if (Array.isArray(ids) && ids.length) {
+      selectedIds = new Set(ids.map((n) => parseInt(n)).filter((n) => Number.isFinite(n)));
+    } else if (Number.isFinite(Number(fromGroupId))) {
+      const fid = Number(fromGroupId);
+      selectedIds = new Set(items.filter((it) => (Number(it.group_id) === fid) || (!it.group_id && it.group && byName.get(String(it.group)) === fid)).map((it) => it.id));
+    } else if (typeof fromGroup === 'string') {
+      const src = fromGroup.trim();
+      selectedIds = new Set(items.filter((it) => (it.group || '') === src).map((it) => it.id));
+    } else if (allUngrouped) {
+      selectedIds = new Set(items.filter((it) => (!it.group && !it.group_id) || String(it.group || '').trim() === '').map((it) => it.id));
+    } else {
+      ctx.status = 400; ctx.body = { success: false, message: 'one of ids|fromGroup|fromGroupId|allUngrouped is required' }; return;
+    }
+
+    let changed = 0;
+    const updatedItems = items.map((it) => {
+      if (selectedIds.has(it.id)) {
+        if (wantClear) {
+          if (it.group || it.group_id) { const copy = { ...it }; delete copy.group; delete copy.group_id; changed++; return copy; }
+        } else {
+          const beforeName = it.group || '';
+          const beforeId = Number.isFinite(Number(it.group_id)) ? Number(it.group_id) : (byName.get(String(it.group || '')) || undefined);
+          if (beforeName !== targetGroup || beforeId !== targetId) { changed++; return { ...it, group: targetGroup, group_id: targetId }; }
+        }
+      }
+      return it;
+    });
+
+    if (changed) db.set(key, updatedItems).write();
+
+    ctx.body = { success: true, data: { changed, total: items.length } };
   } catch (error) {
     ctx.status = 500; ctx.body = { success: false, message: error.message };
   }
@@ -547,4 +951,4 @@ async function depsInfo(ctx) {
   }
 }
 
-module.exports = { getAll, saveAll, testAll, replaceGlobals, upsertGlobal, depsList, depsInstall, depsUninstall, depsInfo, __sanitizeConfig: sanitizeConfig, __DEFAULT_CONFIG: DEFAULT_CONFIG };
+module.exports = { getAll, saveAll, testAll, replaceGlobals, upsertGlobal, depsList, depsInstall, depsUninstall, depsInfo, __sanitizeConfig: sanitizeConfig, __DEFAULT_CONFIG: DEFAULT_CONFIG, listGroups, addGroup, renameGroup, deleteGroup, syncGroupsFromItems, groupStats, assignGroup };

@@ -45,9 +45,7 @@
             <SectionUI :model="configObj" />
           </el-tab-pane>
 
-          <el-tab-pane label="全局变量" name="globals">
-            <SectionGlobals :model="configObj" />
-          </el-tab-pane>
+          <!-- 已隐藏：全局变量，统一到独立的“全局变量”侧边栏页面 -->
 
           <el-tab-pane label="依赖" name="deps">
             <SectionDeps />
@@ -78,7 +76,7 @@ import SectionScheduler from './config/SectionScheduler.vue'
 import SectionLogging from './config/SectionLogging.vue'
 import SectionNotify from './config/SectionNotify.vue'
 import SectionUI from './config/SectionUI.vue'
-import SectionGlobals from './config/SectionGlobals.vue'
+// import SectionGlobals from './config/SectionGlobals.vue' // 已隐藏
 import SectionDeps from './config/SectionDeps.vue'
 import SectionBackup from './config/SectionBackup.vue'
 import SectionSecrets from './config/SectionSecrets.vue'

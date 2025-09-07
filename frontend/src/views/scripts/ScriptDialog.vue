@@ -19,6 +19,13 @@
         </el-select>
       </el-form-item>
 
+      <!-- 新增：分组选择 -->
+      <el-form-item label="分组">
+        <el-select v-model="localForm.group" placeholder="选择分组" clearable filterable style="width: 100%">
+          <el-option v-for="g in scriptGroups" :key="g" :label="g" :value="g" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="脚本内容" prop="content">
         <div class="content-input-section">
           <div class="editor-toolbar">
@@ -136,7 +143,18 @@ const fileContent = ref('')
 const fullscreenEditorVisible = ref(false)
 const fullscreenContent = ref('')
 
-const localForm = ref({ name: '', description: '', language: 'shell', content: '', default_params: {} })
+const localForm = ref({ name: '', description: '', language: 'shell', content: '', default_params: {}, group: '' })
+
+// 新增：脚本分组
+const scriptGroups = ref([])
+const loadScriptGroups = async () => {
+  try {
+    const res = await configApi.listGroups('script')
+    const data = res?.data ?? res
+    // 支持两种返回：直接数组或 {scriptGroups}
+    scriptGroups.value = Array.isArray(data) ? data : (data?.scriptGroups || [])
+  } catch {}
+}
 
 // 默认参数编辑（JSON 文本）
 const defaultParamsText = ref('')
@@ -170,7 +188,7 @@ const syncParamsFromText = () => {
 
 watch(() => props.modelValue, (v) => visible.value = v)
 watch(() => props.form, (v) => {
-  localForm.value = { ...localForm.value, ...v, default_params: v?.default_params ?? {} }
+  localForm.value = { ...localForm.value, ...v, default_params: v?.default_params ?? {}, group: v?.group || '' }
   inputMode.value = 'text'
   fileContent.value = ''
   syncTextFromParams()
@@ -259,7 +277,7 @@ const insertGlobalRefDefault = (key) => {
   }
 }
 
-onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight); fetchGlobals() })
+onMounted(() => { updateEditorHeight(); window.addEventListener('resize', updateEditorHeight); fetchGlobals(); loadScriptGroups() })
 onUnmounted(() => { window.removeEventListener('resize', updateEditorHeight) })
 </script>
 

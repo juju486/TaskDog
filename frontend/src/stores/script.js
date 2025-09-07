@@ -9,10 +9,10 @@ export const useScriptStore = defineStore('script', {
   }),
   
   actions: {
-    async fetchScripts() {
+    async fetchScripts(params) {
       this.loading = true
       try {
-        const response = await scriptApi.getAll()
+        const response = await scriptApi.getAll(params)
         this.scripts = response.data || []
       } catch (error) {
         console.error('Failed to fetch scripts:', error)
@@ -59,8 +59,9 @@ export const useScriptStore = defineStore('script', {
     async testScript(id, params) {
       try {
         const response = await scriptApi.test(id, params)
-        // 兼容后端 data.data 结构
-        return response.data ?? response
+        // 兼容后端 { success, data: {...} } 与扁平 {...}
+        const top = response?.data ?? response
+        return top?.data ?? top
       } catch (error) {
         console.error('Failed to test script:', error)
         throw error

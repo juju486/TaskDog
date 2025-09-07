@@ -30,7 +30,7 @@ async function generateUniqueScriptPath(baseName, language, preferFilePath = nul
   return filePath;
 }
 
-// 新增：确保“参数化示例”存在（只创建一次）
+// 新增：确保“参数化示例：问候与重试”存在（只创建一次）
 async function ensureParamSampleExists() {
   const db = getDatabase();
   try {
@@ -97,6 +97,63 @@ async function ensurePlaywrightSampleExists() {
   }
 }
 
+// ===== 分组V2辅助（脚本） =====
+function getGroupV2Config() {
+  const db = getDatabase();
+  const cfg = db.get('config_groups').value() || {};
+  const v2 = cfg.groupsV2 || { script: [], task: [], nextScriptGroupId: 1, nextTaskGroupId: 1 };
+  const groups = cfg.groups || { scriptGroups: [], taskGroups: [] };
+  return { cfg, v2, groups };
+}
+function findGroupIdByNameScript(name) {
+  const { v2 } = getGroupV2Config();
+  const list = Array.isArray(v2.script) ? v2.script : [];
+  const item = list.find((x) => x && x.name === name);
+  return item ? item.id : undefined;
+}
+function findGroupNameByIdScript(id) {
+  const { v2 } = getGroupV2Config();
+  const list = Array.isArray(v2.script) ? v2.script : [];
+  const item = list.find((x) => Number(x.id) === Number(id));
+  return item ? item.name : undefined;
+}
+function ensureScriptGroup(name) {
+  if (!name) return { id: undefined, name: '' };
+  const db = getDatabase();
+  const { cfg, v2, groups } = getGroupV2Config();
+  const list = Array.isArray(v2.script) ? v2.script : [];
+  const exist = list.find((x) => x.name === name);
+  if (exist) return { id: exist.id, name: exist.name };
+  // 不存在则创建
+  const id = (v2.nextScriptGroupId && Number.isFinite(Number(v2.nextScriptGroupId))) ? v2.nextScriptGroupId : 1;
+  const nextId = id + 1;
+  const newList = list.concat([{ id, name }]);
+  const scriptGroups = Array.from(new Set([...(groups.scriptGroups || []), name]));
+  const nextV2 = { ...v2, script: newList, nextScriptGroupId: nextId };
+  const nextCfg = { ...cfg, groups: { ...groups, scriptGroups }, groupsV2: nextV2 };
+  db.set('config_groups', nextCfg).write();
+  return { id, name };
+}
+function resolveIncomingScriptGroup(payload) {
+  // 支持 { group, group_id }
+  const gName = typeof payload.group === 'string' && payload.group.trim() ? payload.group.trim() : '';
+  const gidRaw = payload.group_id;
+  const gid = Number.isFinite(Number(gidRaw)) ? Number(gidRaw) : undefined;
+
+  // 优先ID -> 名称
+  if (gid) {
+    const name = findGroupNameByIdScript(gid);
+    if (name) return { group: name, group_id: gid };
+    // ID 无效则回退到名称处理
+  }
+  // 名称 -> ID（必要时创建）
+  if (gName) {
+    const id = findGroupIdByNameScript(gName) || ensureScriptGroup(gName).id;
+    return { group: gName, group_id: id };
+  }
+  return { group: undefined, group_id: undefined };
+}
+
 // 列表
 async function list(ctx) {
   const db = getDatabase();
@@ -105,7 +162,17 @@ async function list(ctx) {
     await ensureParamSampleExists();
     await ensurePlaywrightSampleExists();
 
-    const scripts = db.get('scripts').orderBy(['created_at'], ['desc']).value();
+    const q = ctx.request.query || {};
+    const groupFilter = typeof q.group === 'string' && q.group.trim() ? q.group.trim() : null;
+    const groupIdFilter = (q.groupId ?? q.group_id);
+    const gid = Number.isFinite(Number(groupIdFilter)) ? Number(groupIdFilter) : null;
+
+    let scripts = db.get('scripts').orderBy(['created_at'], ['desc']).value();
+    if (gid != null) {
+      scripts = (scripts || []).filter((s) => Number(s.group_id) === gid);
+    } else if (groupFilter) {
+      scripts = (scripts || []).filter(s => (s.group || '') === groupFilter);
+    }
     const scriptsWithContent = await Promise.all(
       (scripts || []).map(async (script) => {
         try {
@@ -145,6 +212,9 @@ async function getById(ctx) {
 async function create(ctx) {
   const db = getDatabase();
   const { name, description, content, language = 'shell', file_path, default_params } = ctx.request.body;
+  // 同时支持 { group, group_id }
+  const incoming = ctx.request.body || {};
+  const resolved = resolveIncomingScriptGroup(incoming);
   if (!name || !content) { ctx.status = 400; ctx.body = { success: false, message: 'Name and content are required' }; return; }
   if (!isSupportedLanguage(language)) { ctx.status = 400; ctx.body = { success: false, message: 'Unsupported language' }; return; }
   try {
@@ -159,6 +229,10 @@ async function create(ctx) {
     } else {
       script.default_params = {};
     }
+    // 分组（名称与ID）
+    if (resolved.group) script.group = resolved.group;
+    if (resolved.group_id) script.group_id = resolved.group_id;
+
     db.get('scripts').push(script).write();
     db.set('_meta.nextScriptId', id + 1).write();
     ctx.body = { success: true, data: { ...script, content } };
@@ -172,6 +246,9 @@ async function update(ctx) {
   const db = getDatabase();
   const { id } = ctx.params;
   const { name, description, content, language, default_params } = ctx.request.body;
+  // 同时支持 { group, group_id }
+  const incoming = ctx.request.body || {};
+  const resolved = resolveIncomingScriptGroup(incoming);
   try {
     const script = db.get('scripts').find({ id: parseInt(id) }).value();
     if (!script) { ctx.status = 404; ctx.body = { success: false, message: 'Script not found' }; return; }
@@ -189,7 +266,7 @@ async function update(ctx) {
         await deleteScriptFile(script.file_path);
       }
     }
-    const updated = db.get('scripts').find({ id: parseInt(id) }).assign({
+    const patch = {
       name: name || script.name,
       description: description !== undefined ? description : script.description,
       language: language || script.language,
@@ -197,7 +274,22 @@ async function update(ctx) {
       // 支持默认参数更新
       default_params: default_params !== undefined ? default_params : (script.default_params || {}),
       updated_at: new Date().toISOString()
-    }).write();
+    };
+    // 分组（允许清空；若解析到值则同时写入 name 与 id）
+    if (incoming.hasOwnProperty('group') || incoming.hasOwnProperty('group_id')) {
+      if (resolved.group || resolved.group_id) {
+        patch.group = resolved.group;
+        patch.group_id = resolved.group_id;
+      } else {
+        // 清空
+        patch.group = undefined;
+        delete patch.group;
+        patch.group_id = undefined;
+        delete patch.group_id;
+      }
+    }
+
+    const updated = db.get('scripts').find({ id: parseInt(id) }).assign(patch).write();
 
     const respContent = content !== undefined ? content : await readScriptFile(newFilePath).catch(() => '// 无法读取脚本文件');
     ctx.body = { success: true, message: 'Script updated successfully', data: { ...updated, content: respContent } };

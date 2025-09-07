@@ -4,6 +4,7 @@ import Tasks from '@/views/Tasks.vue'
 import Config from '@/views/Config.vue'
 import Logs from '@/views/Logs.vue'
 import Tools from '@/views/Tools.vue'
+import Globals from '@/views/globals/Globals.vue'
 
 const routes = [
   {
@@ -19,6 +20,11 @@ const routes = [
     path: '/tasks',
     name: 'Tasks',
     component: Tasks
+  },
+  {
+    path: '/globals',
+    name: 'Globals',
+    component: Globals
   },
   {
     path: '/config',

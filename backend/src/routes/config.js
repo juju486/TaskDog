@@ -13,6 +13,16 @@ router.post('/test', configController.testAll);
 router.put('/globals', configController.replaceGlobals);
 router.post('/globals/set', configController.upsertGlobal);
 
+// 分组管理（新增）
+router.get('/groups', configController.listGroups);
+router.post('/groups', configController.addGroup);
+router.post('/groups/rename', configController.renameGroup);
+router.post('/groups/delete', configController.deleteGroup);
+// 新增：分组同步、统计、批量分配
+router.post('/groups/syncItems', configController.syncGroupsFromItems);
+router.get('/groups/stats', configController.groupStats);
+router.post('/groups/assign', configController.assignGroup);
+
 // 依赖管理
 router.get('/deps/list', configController.depsList);
 router.post('/deps/install', configController.depsInstall);

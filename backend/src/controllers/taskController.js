@@ -9,11 +9,74 @@ function normalizeScriptParams(input) {
   return undefined
 }
 
+// ===== 分组V2辅助（任务） =====
+function getGroupV2ConfigTask() {
+  const db = getDatabase()
+  const cfg = db.get('config_groups').value() || {}
+  const v2 = cfg.groupsV2 || { script: [], task: [], nextScriptGroupId: 1, nextTaskGroupId: 1 }
+  const groups = cfg.groups || { scriptGroups: [], taskGroups: [] }
+  return { cfg, v2, groups }
+}
+function findGroupIdByNameTask(name) {
+  const { v2 } = getGroupV2ConfigTask()
+  const list = Array.isArray(v2.task) ? v2.task : []
+  const item = list.find((x) => x && x.name === name)
+  return item ? item.id : undefined
+}
+function findGroupNameByIdTask(id) {
+  const { v2 } = getGroupV2ConfigTask()
+  const list = Array.isArray(v2.task) ? v2.task : []
+  const item = list.find((x) => Number(x.id) === Number(id))
+  return item ? item.name : undefined
+}
+function ensureTaskGroup(name) {
+  if (!name) return { id: undefined, name: '' }
+  const db = getDatabase()
+  const { cfg, v2, groups } = getGroupV2ConfigTask()
+  const list = Array.isArray(v2.task) ? v2.task : []
+  const exist = list.find((x) => x.name === name)
+  if (exist) return { id: exist.id, name: exist.name }
+  // 不存在则创建
+  const id = (v2.nextTaskGroupId && Number.isFinite(Number(v2.nextTaskGroupId))) ? v2.nextTaskGroupId : 1
+  const nextId = id + 1
+  const newList = list.concat([{ id, name }])
+  const taskGroups = Array.from(new Set([...(groups.taskGroups || []), name]))
+  const nextV2 = { ...v2, task: newList, nextTaskGroupId: nextId }
+  const nextCfg = { ...cfg, groups: { ...groups, taskGroups }, groupsV2: nextV2 }
+  db.set('config_groups', nextCfg).write()
+  return { id, name }
+}
+function resolveIncomingTaskGroup(payload) {
+  const gName = typeof payload.group === 'string' && payload.group.trim() ? payload.group.trim() : ''
+  const gidRaw = payload.group_id
+  const gid = Number.isFinite(Number(gidRaw)) ? Number(gidRaw) : undefined
+  // 优先ID -> 名称
+  if (gid) {
+    const name = findGroupNameByIdTask(gid)
+    if (name) return { group: name, group_id: gid }
+    // ID 无效则回退到名称处理
+  }
+  // 名称 -> ID（必要时创建）
+  if (gName) {
+    const id = findGroupIdByNameTask(gName) || ensureTaskGroup(gName).id
+    return { group: gName, group_id: id }
+  }
+  return { group: undefined, group_id: undefined }
+}
+
 // 查询任务列表
 async function list(ctx) {
   const db = getDatabase()
   try {
-    const tasks = db.get('scheduled_tasks').value() || []
+    const q = ctx.request.query || {}
+    const groupFilter = typeof q.group === 'string' && q.group.trim() ? q.group.trim() : null
+    const groupIdFilter = (q.groupId ?? q.group_id)
+    const gid = Number.isFinite(Number(groupIdFilter)) ? Number(groupIdFilter) : null
+
+    let tasks = db.get('scheduled_tasks').value() || []
+    if (gid != null) tasks = tasks.filter(t => Number(t.group_id) === gid)
+    else if (groupFilter) tasks = tasks.filter(t => (t.group || '') === groupFilter)
+
     const scripts = db.get('scripts').value() || []
     const scriptMap = new Map(scripts.map(s => [s.id, s]))
     const tasksWithScripts = tasks
@@ -54,6 +117,9 @@ async function getById(ctx) {
 async function create(ctx) {
   const db = getDatabase()
   const { name, script_id, script_ids, cron_expression, status = 'inactive', script_params } = ctx.request.body
+  // 同时支持 { group, group_id }
+  const incoming = ctx.request.body || {}
+  const resolved = resolveIncomingTaskGroup(incoming)
   if (!name || !cron_expression || (!script_id && (!Array.isArray(script_ids) || script_ids.length === 0))) {
     ctx.status = 400; ctx.body = { success: false, message: 'Name, cron_expression and script(s) are required' }; return
   }
@@ -71,6 +137,9 @@ async function create(ctx) {
     // 可选：保存脚本参数（对象或数组）
     const sp = normalizeScriptParams(script_params)
     if (sp !== undefined) newTask.script_params = sp
+    // 分组（名称与ID）
+    if (resolved.group) newTask.group = resolved.group
+    if (resolved.group_id) newTask.group_id = resolved.group_id
 
     db.get('scheduled_tasks').push(newTask).write()
     db.set('_meta.nextTaskId', nextId + 1).write()
@@ -88,6 +157,9 @@ async function update(ctx) {
   const db = getDatabase()
   const { id } = ctx.params
   const { name, script_id, script_ids, cron_expression, status, script_params } = ctx.request.body
+  // 同时支持 { group, group_id }
+  const incoming = ctx.request.body || {}
+  const resolved = resolveIncomingTaskGroup(incoming)
   try {
     const taskId = parseInt(id)
     const existingTask = db.get('scheduled_tasks').find({ id: taskId }).value()
@@ -113,6 +185,18 @@ async function update(ctx) {
       ...(typeof status === 'string' && { status }),
       ...(ids ? { script_ids: ids, script_id: ids[0] } : {}),
       updated_at: new Date().toISOString()
+    }
+
+    // 分组（允许清空；若解析到值则同时写入 name 与 id）
+    if (incoming.hasOwnProperty('group') || incoming.hasOwnProperty('group_id')) {
+      if (resolved.group || resolved.group_id) {
+        updatedTask.group = resolved.group
+        updatedTask.group_id = resolved.group_id
+      } else {
+        // 清空
+        delete updatedTask.group
+        delete updatedTask.group_id
+      }
     }
 
     // 更新脚本参数（允许移除）

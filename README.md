@@ -14,6 +14,11 @@ TaskDog 是一个现代化的脚本管理和定时任务调度工具，提供直
 - 📊 **日志管理** - 完整的操作日志和执行记录
 - 🎨 **现代 UI** - 基于 Vue3 + Element Plus 的美观界面
 - 🚀 **高性能** - 基于 Node.js + Koa 的高效后端
+- 🗂️ **分组管理（新增）**
+  - 脚本与任务都支持可选的分组字段 `group`
+  - 在脚本和任务页面支持按分组筛选与查看
+  - 提供“管理分组”对话框，可新增、重命名、删除分组
+  - 删除或重命名分组时，已分配项目会自动清空或迁移
 
 ## 🔧 技术栈
 
@@ -98,6 +103,7 @@ TaskDog 支持两种方式创建和管理脚本：
    - 描述：脚本的功能说明
    - 脚本语言：选择 PowerShell、Python、JavaScript、Batch 或 Shell
    - 脚本内容：在文本编辑器中输入脚本代码
+   - 分组：可选，选择或留空
 5. 点击 "创建" 保存脚本
 
 #### 方式二：文件上传
@@ -131,7 +137,17 @@ TaskDog 支持两种方式创建和管理脚本：
    - 选择脚本：从已创建的脚本中选择
    - Cron 表达式：设置执行时间
    - 状态：激活或停用任务
+   - 分组：可选，选择或留空
 4. 保存并启动任务
+
+### 分组管理（脚本/任务）
+- 在页面右上角可通过下拉框按分组筛选列表
+- 点击“管理分组”可打开分组管理对话框：
+  - 新增分组：输入名称后点击新增
+  - 重命名分组：对已有分组重命名，相关脚本/任务将自动迁移到新名称
+  - 删除分组：支持删除，已分配项会清空其 group 字段
+- 脚本/任务创建或编辑时可直接选择分组
+- 已存在的脚本/任务默认 group 为空，可通过编辑进行迁移
 
 ### Cron 表达式示例
 - `0 9 * * *` - 每天上午 9:00
@@ -232,18 +248,28 @@ TaskDog/
 ## 📊 API 接口
 
 ### 脚本管理
-- `GET /api/scripts` - 获取脚本列表
-- `POST /api/scripts` - 创建脚本
-- `PUT /api/scripts/:id` - 更新脚本
+- `GET /api/scripts` - 获取脚本列表（支持 `?group=` 按分组过滤）
+- `POST /api/scripts` - 创建脚本（支持传入 `group`）
+- `PUT /api/scripts/:id` - 更新脚本（支持更新 `group`）
 - `DELETE /api/scripts/:id` - 删除脚本
 - `POST /api/scripts/:id/test` - 测试脚本
+- `GET /api/scripts/:id/download` - 下载脚本文件
 
 ### 定时任务
-- `GET /api/tasks` - 获取任务列表
-- `POST /api/tasks` - 创建任务
-- `PUT /api/tasks/:id` - 更新任务
+- `GET /api/tasks` - 获取任务列表（支持 `?group=` 按分组过滤）
+- `POST /api/tasks` - 创建任务（支持传入 `group`）
+- `PUT /api/tasks/:id` - 更新任务（支持更新 `group`）
 - `DELETE /api/tasks/:id` - 删除任务
-- `PATCH /api/tasks/:id/toggle` - 切换任务状态
+- `POST /api/tasks/:id/start` - 启动任务
+- `POST /api/tasks/:id/stop` - 停止任务
+- `POST /api/tasks/:id/runOnce` - 立即执行一次
+
+### 分组管理
+- `GET /api/config/groups` - 列出分组（可选 `?type=script|task`）
+- `POST /api/config/groups` - 新增分组 `{ type, name }`
+- `POST /api/config/groups/rename` - 重命名分组 `{ type, oldName, newName }`
+- `POST /api/config/groups/delete` - 删除分组 `{ type, name, reassignTo? }`
+- 统一配置读取：`GET /api/config/all` 返回 `{ groups: { scriptGroups: [], taskGroups: [] }, globals: {...}, ... }`
 
 ### 配置管理
 - `GET /api/config` - 获取配置列表
@@ -287,6 +313,11 @@ A: 确认任务状态为 "激活"，检查 Cron 表达式是否正确。
 A: 确认前后端服务都已启动，检查防火墙设置。
 
 ## 📝 更新日志
+
+### v1.1.0 (2025-01-15)
+- 🗂️ 新增脚本/任务分组能力：分组字段、筛选、管理 UI 与后端 API
+- ✨ 脚本/任务创建/编辑支持选择分组
+- 🧰 分组重命名/删除自动迁移/清空关联项
 
 ### v1.0.0 (2025-01-10)
 - ✨ 初始版本发布

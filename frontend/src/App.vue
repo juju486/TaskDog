@@ -29,6 +29,11 @@
           <span>定时任务</span>
         </el-menu-item>
 
+        <el-menu-item index="/globals" class="menu-item">
+          <el-icon><Setting /></el-icon>
+          <span>全局变量</span>
+        </el-menu-item>
+
         <el-menu-item index="/tools" class="menu-item">
           <el-icon><Tools /></el-icon>
           <span>工具配置</span>

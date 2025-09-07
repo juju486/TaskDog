@@ -11,6 +11,13 @@
         <el-input v-model="localForm.name" placeholder="请输入任务名称" />
       </el-form-item>
 
+      <!-- 新增：任务分组选择 -->
+      <el-form-item label="分组">
+        <el-select v-model="localForm.group" placeholder="选择分组" clearable filterable style="width: 100%">
+          <el-option v-for="g in taskGroups" :key="g" :label="g" :value="g" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="关联脚本" prop="script_ids">
         <el-select
           v-model="localForm.script_ids"
@@ -119,12 +126,23 @@ const formRef = ref()
 const localForm = ref({
   id: undefined,
   name: '',
+  group: '',
   script_ids: [],
   cron_expression: '',
   status: 'inactive',
   // 仅用于回填与提交，不做为 ElForm 字段校验
   script_params: undefined
 })
+
+// 新增：任务分组
+const taskGroups = ref([])
+const loadTaskGroups = async () => {
+  try {
+    const res = await configApi.listGroups('task')
+    const data = res?.data ?? res
+    taskGroups.value = Array.isArray(data) ? data : (data?.taskGroups || [])
+  } catch {}
+}
 
 // 脚本映射与参数文本/错误
 const scriptMap = computed(() => new Map(props.scripts.map(s => [s.id, s])))
@@ -214,6 +232,7 @@ watch(
       ...localForm.value,
       id: v?.id,
       name: v?.name ?? '',
+      group: v?.group || '',
       cron_expression: v?.cron_expression ?? '',
       status: v?.status ?? 'inactive',
       script_ids: ids,
@@ -276,6 +295,7 @@ const confirm = async () => {
   const payload = {
     id: localForm.value.id,
     name: localForm.value.name,
+    group: localForm.value.group || '',
     cron_expression: localForm.value.cron_expression,
     status: localForm.value.status,
     script_ids: localForm.value.script_ids,
@@ -285,7 +305,7 @@ const confirm = async () => {
   emit('confirm', payload)
 }
 
-onMounted(() => { fetchGlobals() })
+onMounted(() => { fetchGlobals(); loadTaskGroups() })
 </script>
 
 <style scoped>

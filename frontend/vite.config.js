@@ -18,7 +18,10 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: `http://localhost:${BACKEND_PORT}`,
-          changeOrigin: true
+          changeOrigin: true,
+          // 增加超时，适配长耗时脚本测试
+          timeout: 10 * 60 * 1000,
+          proxyTimeout: 10 * 60 * 1000
         }
       }
     }

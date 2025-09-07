@@ -23,6 +23,14 @@
         </template>
       </el-table-column>
 
+      <!-- 新增分组列 -->
+      <el-table-column prop="group" label="分组" width="140">
+        <template #default="{ row }">
+          <el-tag v-if="row.group" size="small">{{ row.group }}</el-tag>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="getStatusTagType(row.status)" size="small">

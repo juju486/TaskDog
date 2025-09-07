@@ -1,9 +1,9 @@
 import api from './index'
 
 export const scriptApi = {
-  // 获取所有脚本
-  getAll() {
-    return api.get('/scripts')
+  // 获取所有脚本（可选按分组过滤）
+  getAll(params) {
+    return api.get('/scripts', params ? { params } : undefined)
   },
   
   // 获取单个脚本
@@ -28,7 +28,8 @@ export const scriptApi = {
   
   // 测试运行脚本（支持临时参数）
   test(id, params) {
-    return api.post(`/scripts/${id}/test`, params ? { params } : {})
+    // 将超时提升到 5 分钟，适配 Playwright 等长耗时脚本
+    return api.post(`/scripts/${id}/test`, params ? { params } : {}, { timeout: 5 * 60 * 1000 })
   },
 
   // 下载脚本文件
@@ -39,9 +40,9 @@ export const scriptApi = {
 }
 
 export const taskApi = {
-  // 获取所有定时任务
-  getAll() {
-    return api.get('/tasks')
+  // 获取所有定时任务（可选按分组过滤）
+  getAll(params) {
+    return api.get('/tasks', params ? { params } : undefined)
   },
   
   // 获取单个定时任务
@@ -87,7 +88,7 @@ export const configApi = {
   },
   
   // 兼容：获取单个配置（旧）
-  getByKey(key) {
+  getById(key) {
     return api.get(`/config/${key}`)
   },
   
@@ -114,6 +115,40 @@ export const configApi = {
   // 新：一次性保存全部分组配置
   saveAll(configObj) {
     return api.put('/config/all', configObj)
+  },
+
+  // 新增：仅替换全局变量（避免影响其他配置）
+  replaceGlobals(globalsObj) {
+    return api.put('/config/globals', globalsObj)
+  },
+
+  // 新增：新增或更新单个全局变量
+  upsertGlobal({ key, value, secret }) {
+    return api.post('/config/globals/set', { key, value, secret })
+  },
+
+  // 分组管理
+  listGroups(type) {
+    return api.get('/config/groups', type ? { params: { type } } : undefined)
+  },
+  addGroup({ type, name }) {
+    return api.post('/config/groups', { type, name })
+  },
+  renameGroup({ type, oldName, newName }) {
+    return api.post('/config/groups/rename', { type, oldName, newName })
+  },
+  deleteGroup({ type, name, reassignTo }) {
+    return api.post('/config/groups/delete', { type, name, reassignTo })
+  },
+  // 新增：分组统计、同步、批量分配
+  groupStats() {
+    return api.get('/config/groups/stats')
+  },
+  syncGroupsFromItems() {
+    return api.post('/config/groups/syncItems')
+  },
+  assignGroup(payload) {
+    return api.post('/config/groups/assign', payload)
   },
 
   // 新：测试配置连通性

@@ -9,10 +9,10 @@ export const useTaskStore = defineStore('task', {
   }),
   
   actions: {
-    async fetchTasks() {
+    async fetchTasks(params) {
       this.loading = true
       try {
-        const response = await taskApi.getAll()
+        const response = await taskApi.getAll(params)
         this.tasks = response.data || []
       } catch (error) {
         console.error('Failed to fetch tasks:', error)
