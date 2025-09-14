@@ -253,6 +253,54 @@ const manageVisible = ref(false)
 const manageType = ref('script') // 'script' | 'task'
 const newGroupName = ref('')
 const openManageGroups = (type) => { manageType.value = type; newGroupName.value = ''; manageVisible.value = true }
+
+// 新增：分组 CRUD 事件
+const addOneGroup = async () => {
+  const name = (newGroupName.value || '').trim()
+  if (!name) { ElMessage.warning('请输入分组名称'); return }
+  try {
+    await configApi.addGroup({ type: manageType.value, name })
+    ElMessage.success('已新增分组')
+    newGroupName.value = ''
+    await loadGroups()
+    await refreshStats()
+  } catch (e) {
+    ElMessage.error('新增失败')
+  }
+}
+const renameOne = async (oldName) => {
+  try {
+    const { value } = await ElMessageBox.prompt(`将分组 "${oldName}" 重命名为：`, '重命名', {
+      inputValue: oldName,
+      inputValidator: (v) => !!(v && String(v).trim()) || '名称不能为空'
+    })
+    const newName = String(value).trim()
+    if (!newName || newName === oldName) return
+    await configApi.renameGroup({ type: manageType.value, oldName, newName })
+    ElMessage.success('已重命名')
+    await loadGroups()
+    await refreshStats()
+    // 若当前筛选等于旧名，自动切到新名
+    if (groupFilter.value === oldName) groupFilter.value = newName
+    await scriptStore.fetchScripts(groupFilter.value ? { group: groupFilter.value } : undefined)
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('重命名失败')
+  }
+}
+const deleteOne = async (name) => {
+  try {
+    await ElMessageBox.confirm(`删除分组 "${name}"？该分组下的项将不再归属任何分组。`, '删除分组', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    await configApi.deleteGroup({ type: manageType.value, name })
+    ElMessage.success('已删除分组')
+    await loadGroups()
+    await refreshStats()
+    if (groupFilter.value === name) groupFilter.value = ''
+    await scriptStore.fetchScripts(groupFilter.value ? { group: groupFilter.value } : undefined)
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('删除失败')
+  }
+}
+
 // 新增：统计与批量迁移状态
 const stats = ref(null)
 const loadingStats = ref(false)
