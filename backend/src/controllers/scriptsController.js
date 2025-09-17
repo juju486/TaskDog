@@ -34,9 +34,13 @@ async function generateUniqueScriptPath(baseName, language, preferFilePath = nul
 async function ensureParamSampleExists() {
   const db = getDatabase();
   try {
+    // 一次性标记：若已标记创建过，则不再自动生成（即使被删除）
+    const createdFlag = db.get('_meta.sampleParamCreated').value();
+    if (createdFlag) return;
+
     const name = '参数化示例：问候与重试';
     const exists = db.get('scripts').find({ name }).value();
-    if (exists) return;
+    if (exists) { db.set('_meta.sampleParamCreated', true).write(); return; }
 
     await ensureScriptsDir();
     const id = db.get('_meta.nextScriptId').value();
@@ -58,6 +62,7 @@ async function ensureParamSampleExists() {
     };
     db.get('scripts').push(script).write();
     db.set('_meta.nextScriptId', id + 1).write();
+    db.set('_meta.sampleParamCreated', true).write();
   } catch (e) {
     console.warn('ensureParamSampleExists failed:', e && e.message ? e.message : e);
   }
@@ -67,9 +72,13 @@ async function ensureParamSampleExists() {
 async function ensurePlaywrightSampleExists() {
   const db = getDatabase();
   try {
+    // 一次性标记：若已标记创建过，则不再自动生成（即使被删除）
+    const createdFlag = db.get('_meta.samplePlaywrightCreated').value();
+    if (createdFlag) return;
+
     const name = 'Playwright 示例：访问网页截图';
     const exists = db.get('scripts').find({ name }).value();
-    if (exists) return;
+    if (exists) { db.set('_meta.samplePlaywrightCreated', true).write(); return; }
 
     await ensureScriptsDir();
     const id = db.get('_meta.nextScriptId').value();
@@ -92,6 +101,7 @@ async function ensurePlaywrightSampleExists() {
     };
     db.get('scripts').push(script).write();
     db.set('_meta.nextScriptId', id + 1).write();
+    db.set('_meta.samplePlaywrightCreated', true).write();
   } catch (e) {
     console.warn('ensurePlaywrightSampleExists failed:', e && e.message ? e.message : e);
   }
@@ -351,4 +361,128 @@ async function download(ctx) {
   }
 }
 
-module.exports = { list, getById, create, update, remove, test, download };
+// ===== 新增：从外部目录导入脚本 =====
+function extToLanguage(ext) {
+  const e = String(ext || '').toLowerCase();
+  if (e === '.ps1') return 'powershell';
+  if (e === '.bat' || e === '.cmd') return 'batch';
+  if (e === '.py') return 'python';
+  if (e === '.js' || e === '.mjs' || e === '.cjs') return 'node';
+  if (e === '.sh') return 'shell';
+  return null;
+}
+async function walkDir(dir, recursive = true) {
+  const out = [];
+  const entries = await fs.readdir(dir).catch(() => []);
+  for (const name of entries) {
+    const full = path.join(dir, name);
+    const st = await fs.stat(full).catch(() => null);
+    if (!st) continue;
+    if (st.isDirectory()) {
+      if (recursive) {
+        const nested = await walkDir(full, recursive);
+        for (const n of nested) out.push(n);
+      }
+    } else if (st.isFile()) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+function decodeFallback(buf) {
+  // 简易编码检测：UTF-8 BOM、UTF-16LE BOM
+  if (!Buffer.isBuffer(buf)) return null;
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+    return buf.slice(3).toString('utf8');
+  }
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    return buf.slice(2).toString('utf16le');
+  }
+  // 尝试 utf8 -> utf16le -> latin1
+  try { return buf.toString('utf8'); } catch {}
+  try { return buf.toString('utf16le'); } catch {}
+  try { return buf.toString('latin1'); } catch {}
+  return null;
+}
+async function readTextSmart(filePath) {
+  try {
+    const raw = await fs.readFile(filePath);
+    const s = decodeFallback(raw);
+    if (s != null) return s;
+    return raw.toString('utf8');
+  } catch (e) {
+    return null;
+  }
+}
+async function importFromDir(ctx) {
+  const db = getDatabase();
+  const body = ctx.request.body || {};
+  const sourceDir = String(body.sourceDir || body.source || '').trim();
+  const recursive = body.recursive !== false;
+  const dryRun = !!body.dryRun;
+  const includeExt = Array.isArray(body.includeExt) ? body.includeExt.map((s) => String(s).toLowerCase()) : null;
+  const incoming = body;
+  const resolvedGroup = resolveIncomingScriptGroup(incoming);
+
+  if (!sourceDir) { ctx.status = 400; ctx.body = { success: false, message: 'sourceDir is required' }; return; }
+  const absSource = path.resolve(sourceDir);
+  const exists = await fs.pathExists(absSource);
+  if (!exists) { ctx.status = 400; ctx.body = { success: false, message: 'sourceDir not found' }; return; }
+  const stat = await fs.stat(absSource);
+  if (!stat.isDirectory()) { ctx.status = 400; ctx.body = { success: false, message: 'sourceDir is not a directory' }; return; }
+
+  try {
+    const files = await walkDir(absSource, recursive);
+    const allowed = files.filter((f) => {
+      const ext = path.extname(f).toLowerCase();
+      if (includeExt && includeExt.length) return includeExt.includes(ext);
+      return !!extToLanguage(ext);
+    });
+
+    await ensureScriptsDir();
+    const imported = [];
+    const skipped = [];
+
+    for (const full of allowed) {
+      const rel = path.relative(absSource, full).replace(/\\/g, '/');
+      const ext = path.extname(full).toLowerCase();
+      const lang = extToLanguage(ext);
+      if (!lang || !isSupportedLanguage(lang)) { skipped.push({ file: full, reason: 'unsupported_ext' }); continue; }
+      const baseName = path.basename(full, ext);
+      const prefer = `scripts/imported/${rel}`.replace(/\\/g, '/');
+      const preferInScripts = prefer.startsWith('scripts') ? prefer : `scripts/${prefer}`;
+      const targetPath = await generateUniqueScriptPath(baseName, lang, preferInScripts);
+      const content = await readTextSmart(full);
+      if (content == null) { skipped.push({ file: full, reason: 'read_failed' }); continue; }
+
+      const nextId = db.get('_meta.nextScriptId').value();
+      const now = new Date().toISOString();
+      const record = {
+        id: nextId,
+        name: baseName,
+        description: `Imported from ${absSource}`,
+        language: lang,
+        file_path: targetPath,
+        default_params: {},
+        created_at: now,
+        updated_at: now,
+      };
+      if (resolvedGroup.group) record.group = resolvedGroup.group;
+      if (resolvedGroup.group_id) record.group_id = resolvedGroup.group_id;
+
+      if (!dryRun) {
+        await writeScriptFile(targetPath, content);
+        db.get('scripts').push(record).write();
+        db.set('_meta.nextScriptId', nextId + 1).write();
+      }
+
+      imported.push({ ...record });
+    }
+
+    ctx.body = { success: true, data: { importedCount: imported.length, skippedCount: skipped.length, imported, skipped } };
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message };
+  }
+}
+
+module.exports = { list, getById, create, update, remove, test, download, importFromDir };

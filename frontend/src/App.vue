@@ -34,11 +34,6 @@
           <span>全局变量</span>
         </el-menu-item>
 
-        <el-menu-item index="/tools" class="menu-item">
-          <el-icon><Tools /></el-icon>
-          <span>工具配置</span>
-        </el-menu-item>
-        
         <el-menu-item index="/config" class="menu-item">
           <el-icon><Setting /></el-icon>
           <span>配置管理</span>
@@ -60,7 +55,7 @@
 </template>
 
 <script setup>
-import { Monitor, Document, Timer, Setting, Tickets, Tools } from '@element-plus/icons-vue'
+import { Monitor, Document, Timer, Setting, Tickets } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

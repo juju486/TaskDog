@@ -3,7 +3,6 @@ import Scripts from '@/views/Scripts.vue'
 import Tasks from '@/views/Tasks.vue'
 import Config from '@/views/Config.vue'
 import Logs from '@/views/Logs.vue'
-import Tools from '@/views/Tools.vue'
 import Globals from '@/views/globals/Globals.vue'
 
 const routes = [
@@ -30,11 +29,6 @@ const routes = [
     path: '/config',
     name: 'Config',
     component: Config
-  },
-  {
-    path: '/tools',
-    name: 'Tools',
-    component: Tools
   },
   {
     path: '/logs',

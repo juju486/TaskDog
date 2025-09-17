@@ -15,4 +15,7 @@ router.delete('/:id', scriptsController.remove);
 router.post('/:id/test', scriptsController.test);
 router.get('/:id/download', scriptsController.download);
 
+// 新增：从外部目录导入脚本
+router.post('/import', scriptsController.importFromDir);
+
 module.exports = router;

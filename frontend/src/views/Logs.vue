@@ -97,6 +97,21 @@
             </el-input>
           </el-col>
         </el-row>
+        <!-- 新增：按任务/脚本筛选 -->
+        <el-row :gutter="16" style="margin-top: 12px;">
+          <el-col :span="6">
+            <el-select v-model="filters.taskId" placeholder="选择任务（可选）" clearable filterable @change="applyFilters">
+              <el-option :label="'全部任务'" :value="undefined" />
+              <el-option v-for="t in taskOptions" :key="t.id" :label="t.name + ' (#' + t.id + ')'" :value="t.id" />
+            </el-select>
+          </el-col>
+          <el-col :span="6">
+            <el-select v-model="filters.scriptId" placeholder="选择脚本（可选）" clearable filterable @change="applyFilters">
+              <el-option :label="'全部脚本'" :value="undefined" />
+              <el-option v-for="s in scriptOptions" :key="s.id" :label="s.name + ' (#' + s.id + ')'" :value="s.id" />
+            </el-select>
+          </el-col>
+        </el-row>
       </div>
 
       <!-- 日志表格 -->
@@ -261,6 +276,7 @@ import {
   InfoFilled, Search, View
 } from '@element-plus/icons-vue';
 import { logApi } from '@/api/modules';
+import { scriptApi, taskApi } from '@/api/modules'
 import moment from 'moment';
 
 // 简单的防抖函数
@@ -294,15 +310,30 @@ const pagination = ref({
 const filters = ref({
   type: '',
   dateRange: null,
-  keyword: ''
+  keyword: '',
+  taskId: undefined,
+  scriptId: undefined
 });
 
-const cleanupForm = ref({
-  days: 30,
-  type: ''
-});
+// 下拉选项数据
+const taskOptions = ref([])
+const scriptOptions = ref([])
 
-const detailViewMode = ref('raw')
+async function loadTaskOptions() {
+  try {
+    const resp = await taskApi.getAll()
+    const list = (resp.data || []).map(t => ({ id: t.id, name: t.name }))
+    taskOptions.value = list
+  } catch (e) { /* 忽略 */ }
+}
+
+async function loadScriptOptions() {
+  try {
+    const resp = await scriptApi.getAll()
+    const list = (resp.data || []).map(s => ({ id: s.id, name: s.name }))
+    scriptOptions.value = list
+  } catch (e) { /* 忽略 */ }
+}
 
 // 方法
 const fetchLogs = async () => {
@@ -313,7 +344,10 @@ const fetchLogs = async () => {
       limit: pagination.value.limit,
       type: filters.value.type,
       start_date: filters.value.dateRange?.[0],
-      end_date: filters.value.dateRange?.[1]
+      end_date: filters.value.dateRange?.[1],
+      keyword: filters.value.keyword || undefined,
+      task_id: filters.value.taskId || undefined,
+      script_id: filters.value.scriptId || undefined
     };
 
     const response = await logApi.getAll(params);
@@ -564,10 +598,15 @@ function downloadDetails() {
 // 生命周期
 onMounted(() => {
   refreshLogs();
+  // 预加载筛选项
+  loadTaskOptions();
+  loadScriptOptions();
 });
 
 // 监听筛选器变化
 watch(() => filters.value.keyword, debouncedSearch);
+watch(() => filters.value.taskId, applyFilters)
+watch(() => filters.value.scriptId, applyFilters)
 </script>
 
 <style scoped>
