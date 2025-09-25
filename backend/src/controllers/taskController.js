@@ -1,6 +1,7 @@
 const cron = require('node-cron')
 const { getDatabase } = require('../utils/database')
 const { scheduleTask, unscheduleTask, logTaskExecution, executeTask } = require('../utils/scheduler')
+const cronParser = require('cron-parser')
 
 function isPlainObject(v) { return v && typeof v === 'object' && !Array.isArray(v) }
 function normalizeScriptParams(input) {
@@ -64,6 +65,27 @@ function resolveIncomingTaskGroup(payload) {
   return { group: undefined, group_id: undefined }
 }
 
+// 计算下一次执行时间（ISO字符串）。仅当 status=active 且 cron_expression 合法时返回；否则返回 null
+function computeNextRunISO(cronExp, tz) {
+  try {
+    if (!cron.validate(cronExp)) return null
+    const options = {}
+    if (tz && typeof tz === 'string') options.tz = tz
+    const interval = cronParser.default.parse(cronExp, options)
+    const next = interval.next().toDate()
+    return next.toISOString()
+  } catch { return null }
+}
+
+function getSchedulerTz() {
+  const db = getDatabase()
+  try {
+    const cfg = db.get('config_groups').value() || {}
+    const tz = cfg.scheduler && cfg.scheduler.schedulerTz
+    return typeof tz === 'string' && tz ? tz : undefined
+  } catch { return undefined }
+}
+
 // 查询任务列表
 async function list(ctx) {
   const db = getDatabase()
@@ -79,13 +101,15 @@ async function list(ctx) {
 
     const scripts = db.get('scripts').value() || []
     const scriptMap = new Map(scripts.map(s => [s.id, s]))
+    const tz = getSchedulerTz()
     const tasksWithScripts = tasks
       .map((task) => {
         const scriptIds = Array.isArray(task.script_ids) && task.script_ids.length
           ? task.script_ids
           : (task.script_id ? [task.script_id] : [])
         const names = scriptIds.map(id => scriptMap.get(id)?.name).filter(Boolean)
-        return { ...task, script_name: names.length ? names.join(', ') : 'Unknown Script' }
+        const nextRun = task.status === 'active' ? computeNextRunISO(task.cron_expression, tz) : null
+        return { ...task, script_name: names.length ? names.join(', ') : 'Unknown Script', next_run: nextRun }
       })
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     ctx.body = { success: true, data: tasksWithScripts }
@@ -106,7 +130,9 @@ async function getById(ctx) {
     const scriptMap = new Map(scripts.map(s => [s.id, s]))
     const scriptIds = Array.isArray(task.script_ids) && task.script_ids.length ? task.script_ids : (task.script_id ? [task.script_id] : [])
     const names = scriptIds.map(sid => scriptMap.get(sid)?.name).filter(Boolean)
-    ctx.body = { success: true, data: { ...task, script_name: names.length ? names.join(', ') : 'Unknown Script' } }
+    const tz = getSchedulerTz()
+    const nextRun = task.status === 'active' ? computeNextRunISO(task.cron_expression, tz) : null
+    ctx.body = { success: true, data: { ...task, script_name: names.length ? names.join(', ') : 'Unknown Script', next_run: nextRun } }
   } catch (error) {
     ctx.status = 500
     ctx.body = { success: false, message: error.message }
@@ -146,7 +172,9 @@ async function create(ctx) {
     if (status === 'active') scheduleTask(newTask)
 
     const names = existing.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)).map(s => s.name)
-    ctx.body = { success: true, data: { ...newTask, script_name: names.join(', ') } }
+    const tz = getSchedulerTz()
+    const nextRun = newTask.status === 'active' ? computeNextRunISO(newTask.cron_expression, tz) : null
+    ctx.body = { success: true, data: { ...newTask, script_name: names.join(', '), next_run: nextRun } }
   } catch (error) {
     ctx.status = 500; ctx.body = { success: false, message: error.message }
   }
@@ -215,8 +243,10 @@ async function update(ctx) {
     const scriptMap = new Map(scripts.map(s => [s.id, s]))
     const finalIds = Array.isArray(updatedTask.script_ids) ? updatedTask.script_ids : (updatedTask.script_id ? [updatedTask.script_id] : [])
     const names = finalIds.map(sid => scriptMap.get(sid)?.name).filter(Boolean)
+    const tz = getSchedulerTz()
+    const nextRun = updatedTask.status === 'active' ? computeNextRunISO(updatedTask.cron_expression, tz) : null
 
-    ctx.body = { success: true, message: 'Task updated successfully', data: { ...updatedTask, script_name: names.length ? names.join(', ') : 'Unknown Script' } }
+    ctx.body = { success: true, message: 'Task updated successfully', data: { ...updatedTask, script_name: names.length ? names.join(', ') : 'Unknown Script', next_run: nextRun } }
   } catch (error) {
     ctx.status = 500; ctx.body = { success: false, message: error.message }
   }
@@ -238,6 +268,47 @@ async function remove(ctx) {
   }
 }
 
+// 启动
+async function start(ctx) {
+  const db = getDatabase()
+  const { id } = ctx.params
+  try {
+    const taskId = parseInt(id, 10)
+    const task = db.get('scheduled_tasks').find({ id: taskId }).value()
+    if (!task) { ctx.status = 404; ctx.body = { success: false, message: 'Task not found' }; return }
+    if (!cron.validate(task.cron_expression)) { ctx.status = 400; ctx.body = { success: false, message: 'Invalid cron expression' }; return }
+    const updatedTask = { ...task, status: 'active', updated_at: new Date().toISOString() }
+    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'active', updated_at: updatedTask.updated_at }).write()
+    unscheduleTask(taskId)
+    scheduleTask(updatedTask)
+    const firstScriptId = Array.isArray(task.script_ids) && task.script_ids.length ? task.script_ids[0] : task.script_id
+    try { logTaskExecution(taskId, firstScriptId || null, 'info', 'Task started manually') } catch {}
+    const tz = getSchedulerTz()
+    const nextRun = computeNextRunISO(updatedTask.cron_expression, tz)
+    ctx.body = { success: true, message: 'Task started successfully', data: { status: 'active', next_run: nextRun } }
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message }
+  }
+}
+
+// 停止
+async function stop(ctx) {
+  const db = getDatabase()
+  const { id } = ctx.params
+  try {
+    const taskId = parseInt(id, 10)
+    const task = db.get('scheduled_tasks').find({ id: taskId }).value()
+    if (!task) { ctx.status = 404; ctx.body = { success: false, message: 'Task not found' }; return }
+    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'inactive', updated_at: new Date().toISOString() }).write()
+    unscheduleTask(taskId)
+    const firstScriptId = Array.isArray(task.script_ids) && task.script_ids.length ? task.script_ids[0] : task.script_id
+    try { logTaskExecution(taskId, firstScriptId || null, 'info', 'Task stopped manually') } catch {}
+    ctx.body = { success: true, message: 'Task stopped successfully', data: { status: 'inactive', next_run: null } }
+  } catch (error) {
+    ctx.status = 500; ctx.body = { success: false, message: error.message }
+  }
+}
+
 // 切换状态
 async function toggle(ctx) {
   const db = getDatabase()
@@ -250,7 +321,9 @@ async function toggle(ctx) {
     db.get('scheduled_tasks').find({ id: taskId }).assign({ status: newStatus, updated_at: new Date().toISOString() }).write()
     unscheduleTask(taskId)
     if (newStatus === 'active') scheduleTask({ ...task, status: newStatus })
-    ctx.body = { success: true, message: `Task ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`, data: { status: newStatus } }
+    const tz = getSchedulerTz()
+    const nextRun = newStatus === 'active' ? computeNextRunISO(task.cron_expression, tz) : null
+    ctx.body = { success: true, message: `Task ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`, data: { status: newStatus, next_run: nextRun } }
   } catch (error) {
     ctx.status = 500; ctx.body = { success: false, message: error.message }
   }
@@ -271,49 +344,12 @@ async function runOnce(ctx) {
     const scriptMap = new Map(scripts.map(s => [s.id, s]))
     const finalIds = Array.isArray(refreshed?.script_ids) && refreshed.script_ids.length ? refreshed.script_ids : (refreshed?.script_id ? [refreshed.script_id] : [])
     const names = finalIds.map(sid => scriptMap.get(sid)?.name).filter(Boolean)
-    ctx.body = { success: true, message: 'Task executed once', data: { result, task: { ...refreshed, script_name: names.length ? names.join(', ') : 'Unknown Script' } } }
+    const tz = getSchedulerTz()
+    const nextRun = refreshed?.status === 'active' ? computeNextRunISO(refreshed.cron_expression, tz) : null
+    ctx.body = { success: true, message: 'Task executed once', data: { result, task: { ...refreshed, script_name: names.length ? names.join(', ') : 'Unknown Script', next_run: nextRun } } }
   } catch (error) {
     ctx.status = 500
     ctx.body = { success: false, message: error.message }
-  }
-}
-
-// 启动
-async function start(ctx) {
-  const db = getDatabase()
-  const { id } = ctx.params
-  try {
-    const taskId = parseInt(id, 10)
-    const task = db.get('scheduled_tasks').find({ id: taskId }).value()
-    if (!task) { ctx.status = 404; ctx.body = { success: false, message: 'Task not found' }; return }
-    if (!cron.validate(task.cron_expression)) { ctx.status = 400; ctx.body = { success: false, message: 'Invalid cron expression' }; return }
-    const updatedTask = { ...task, status: 'active', updated_at: new Date().toISOString() }
-    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'active', updated_at: updatedTask.updated_at }).write()
-    unscheduleTask(taskId)
-    scheduleTask(updatedTask)
-    const firstScriptId = Array.isArray(task.script_ids) && task.script_ids.length ? task.script_ids[0] : task.script_id
-    try { logTaskExecution(taskId, firstScriptId || null, 'info', 'Task started manually') } catch {}
-    ctx.body = { success: true, message: 'Task started successfully', data: { status: 'active' } }
-  } catch (error) {
-    ctx.status = 500; ctx.body = { success: false, message: error.message }
-  }
-}
-
-// 停止
-async function stop(ctx) {
-  const db = getDatabase()
-  const { id } = ctx.params
-  try {
-    const taskId = parseInt(id, 10)
-    const task = db.get('scheduled_tasks').find({ id: taskId }).value()
-    if (!task) { ctx.status = 404; ctx.body = { success: false, message: 'Task not found' }; return }
-    db.get('scheduled_tasks').find({ id: taskId }).assign({ status: 'inactive', updated_at: new Date().toISOString() }).write()
-    unscheduleTask(taskId)
-    const firstScriptId = Array.isArray(task.script_ids) && task.script_ids.length ? task.script_ids[0] : task.script_id
-    try { logTaskExecution(taskId, firstScriptId || null, 'info', 'Task stopped manually') } catch {}
-    ctx.body = { success: true, message: 'Task stopped successfully', data: { status: 'inactive' } }
-  } catch (error) {
-    ctx.status = 500; ctx.body = { success: false, message: error.message }
   }
 }
 

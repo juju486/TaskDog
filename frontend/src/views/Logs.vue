@@ -101,13 +101,13 @@
         <el-row :gutter="16" style="margin-top: 12px;">
           <el-col :span="6">
             <el-select v-model="filters.taskId" placeholder="选择任务（可选）" clearable filterable @change="applyFilters">
-              <el-option :label="'全部任务'" :value="undefined" />
+              <el-option label="全部任务" value="" />
               <el-option v-for="t in taskOptions" :key="t.id" :label="t.name + ' (#' + t.id + ')'" :value="t.id" />
             </el-select>
           </el-col>
           <el-col :span="6">
             <el-select v-model="filters.scriptId" placeholder="选择脚本（可选）" clearable filterable @change="applyFilters">
-              <el-option :label="'全部脚本'" :value="undefined" />
+              <el-option label="全部脚本" value="" />
               <el-option v-for="s in scriptOptions" :key="s.id" :label="s.name + ' (#' + s.id + ')'" :value="s.id" />
             </el-select>
           </el-col>
@@ -300,6 +300,13 @@ const detailDialogVisible = ref(false);
 const cleanupDialogVisible = ref(false);
 const currentLog = ref(null);
 const cleanupLoading = ref(false);
+const detailViewMode = ref('raw'); // 详情查看模式：raw/json/ndjson/table/kv
+
+// 清理表单数据
+const cleanupForm = ref({
+  days: 30,
+  type: ''
+});
 
 const pagination = ref({
   page: 1,
@@ -311,8 +318,8 @@ const filters = ref({
   type: '',
   dateRange: null,
   keyword: '',
-  taskId: undefined,
-  scriptId: undefined
+  taskId: '',
+  scriptId: ''
 });
 
 // 下拉选项数据
@@ -694,7 +701,7 @@ watch(() => filters.value.scriptId, applyFilters)
 .page-content {
   flex: 1;
   padding: 24px 0;
-  overflow: auto;
+  /* overflow: auto; */
 }
 
 .filter-section {

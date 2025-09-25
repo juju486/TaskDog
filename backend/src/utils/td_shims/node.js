@@ -69,6 +69,128 @@ function buildTDFromEnv() {
     return v;
   }
 
+  // 新增：通用 webhook 通知
+  async function tdNotify(message, options = {}) {
+    const api = process.env.TASKDOG_API_URL || 'http://127.0.0.1:3001';
+
+    // 解析 urls（优先 options.urls/options.url，其次从后台配置拉取）
+    async function getWebhookUrls() {
+      const explicit = [];
+      if (typeof options.url === 'string' && options.url.trim()) explicit.push(options.url.trim());
+      if (Array.isArray(options.urls)) {
+        for (const u of options.urls) if (typeof u === 'string' && u.trim()) explicit.push(u.trim());
+      }
+      if (explicit.length) return explicit;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(`${api}/api/config/all`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json().catch(() => null);
+        const data = json && (json.data || json);
+        const w = data && data.notify && data.notify.webhook;
+        if (w && w.enabled && Array.isArray(w.items)) {
+          return w.items.map((it) => (it && typeof it.url === 'string' ? it.url.trim() : '')).filter(Boolean);
+        }
+      } catch (e) {
+        clearTimeout(timeout);
+        try { console.error('TD.notify: failed to load webhook config:', e.message || String(e)); } catch {}
+      }
+      return [];
+    }
+
+    function toPayload(msg, opts) {
+      const now = new Date().toISOString();
+      const isObj = msg && typeof msg === 'object';
+      const level = (opts && typeof opts.level === 'string') ? opts.level : 'info';
+      const title = (opts && typeof opts.title === 'string' && opts.title.trim()) ? opts.title.trim() : 'TaskDog Notification';
+      const scriptPath = (process && Array.isArray(process.argv) && process.argv.length >= 2) ? process.argv[1] : '';
+      const base = {
+        source: 'TaskDog',
+        title,
+        level,
+        time: now,
+        message: isObj ? undefined : String(msg),
+        data: isObj ? msg : (opts && opts.data) || undefined,
+        runtime: {
+          pid: process.pid,
+          cwd: process.cwd(),
+          script: scriptPath,
+          params,
+        },
+      };
+      // 允许附加自定义字段
+      if (opts && typeof opts.extra === 'object' && opts.extra) {
+        base.extra = opts.extra;
+      }
+      return base;
+    }
+
+    // 新增：允许 raw/payload/body 直发
+    function buildBodyAndHeaders(msg, opts) {
+      const baseHeaders = { 'Content-Type': 'application/json', ...(opts && opts.headers ? opts.headers : {}) };
+      const hasPayload = opts && (opts.raw === true || Object.prototype.hasOwnProperty.call(opts, 'payload') || Object.prototype.hasOwnProperty.call(opts, 'body'));
+      if (hasPayload) {
+        const raw = Object.prototype.hasOwnProperty.call(opts, 'payload') ? opts.payload : (Object.prototype.hasOwnProperty.call(opts, 'body') ? opts.body : msg);
+        if (typeof raw === 'string') {
+          return { body: raw, headers: baseHeaders };
+        }
+        return { body: JSON.stringify(raw), headers: baseHeaders };
+      }
+      const payload = toPayload(msg, opts || {});
+      return { body: JSON.stringify(payload), headers: baseHeaders };
+    }
+
+    const urls = await getWebhookUrls();
+    if (!urls.length) {
+      try { console.warn('TD.notify: no webhook configured or provided'); } catch {}
+      return { ok: false, delivered: 0, results: [] };
+    }
+
+    const { body, headers } = buildBodyAndHeaders(message, options || {});
+
+    const results = [];
+    for (const url of urls) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        let ok = res.ok;
+        let respText = '';
+        let respJson = null;
+        try {
+          respText = await res.text();
+          try { respJson = JSON.parse(respText); } catch {}
+        } catch {}
+        // 钉钉/飞书等：errcode/code/StatusCode 为 0 代表成功
+        if (respJson && typeof respJson === 'object') {
+          if (Object.prototype.hasOwnProperty.call(respJson, 'errcode')) {
+            ok = ok && Number(respJson.errcode) === 0;
+          } else if (Object.prototype.hasOwnProperty.call(respJson, 'code')) {
+            ok = ok && Number(respJson.code) === 0;
+          } else if (Object.prototype.hasOwnProperty.call(respJson, 'StatusCode')) {
+            ok = ok && Number(respJson.StatusCode) === 0;
+          }
+        }
+        results.push({ url, ok, status: res.status, body: respJson || respText });
+      } catch (e) {
+        clearTimeout(timeout);
+        results.push({ url, ok: false, error: e.message || String(e) });
+      }
+    }
+
+    const delivered = results.filter(r => r.ok).length;
+    return { ok: delivered > 0, delivered, results };
+  }
+
   const handler = {
     get(target, prop) {
       if (prop === 'set') return tdSet;
@@ -76,6 +198,7 @@ function buildTDFromEnv() {
       if (prop === 'params') return params;
       if (prop === 'getParam') return getParam;
       if (prop === 'requireParam') return requireParam;
+      if (prop === 'notify') return tdNotify;
       if (typeof prop !== 'symbol' && TD_UTILS && Object.prototype.hasOwnProperty.call(TD_UTILS, prop)) {
         return TD_UTILS[prop];
       }
