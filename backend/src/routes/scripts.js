@@ -15,6 +15,9 @@ router.delete('/:id', scriptsController.remove);
 router.post('/:id/test', scriptsController.test);
 router.get('/:id/download', scriptsController.download);
 
+// 新增：流式测试运行
+router.get('/:id/test-stream', scriptsController.testStream);
+
 // 新增：从外部目录导入脚本
 router.post('/import', scriptsController.importFromDir);
 

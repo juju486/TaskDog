@@ -9,6 +9,7 @@
 
   // 保存cookie
   await Promise.all([
+    TD.set('chrome_cookies',cookies),
     TD.set('PDD_COOKIES', pddCookies),
     TD.set('TM_COOKIES', tmCookies),
     TD.set('DY_COOKIES', dyCookies),

@@ -4,7 +4,8 @@
 // - Update via TD.set(key, value) -> writes to backend config_groups.globals (single upsert)
 
 // 使用 Node >=18 的全局 fetch，避免对 axios 的依赖
-const path = require('path')
+const path = require('path');
+const crypto = require('crypto');
 
 function loadCommonUtils() {
   // 优先从脚本工作目录加载 backend/scripts/utils/common.js
@@ -80,7 +81,7 @@ function buildTDFromEnv() {
       if (Array.isArray(options.urls)) {
         for (const u of options.urls) if (typeof u === 'string' && u.trim()) explicit.push(u.trim());
       }
-      if (explicit.length) return explicit;
+      if (explicit.length) return explicit.map(u => ({ url: u })); // 包装成对象
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
@@ -92,13 +93,30 @@ function buildTDFromEnv() {
         const data = json && (json.data || json);
         const w = data && data.notify && data.notify.webhook;
         if (w && w.enabled && Array.isArray(w.items)) {
-          return w.items.map((it) => (it && typeof it.url === 'string' ? it.url.trim() : '')).filter(Boolean);
+          // 返回包含 url 和 secret 的完整对象
+          return w.items.filter((it) => it && typeof it.url === 'string' && it.url.trim());
         }
       } catch (e) {
         clearTimeout(timeout);
         try { console.error('TD.notify: failed to load webhook config:', e.message || String(e)); } catch {}
       }
       return [];
+    }
+
+    function buildDingTalkPayload(msg, opts) {
+      const title = (opts && opts.title) || 'TaskDog Notification';
+      // 钉钉的 text 字段支持 markdown
+      const text = String(msg);
+      const at = (opts && opts.at) || {}; // e.g. { atMobiles: ['180xxxx'], isAtAll: false }
+
+      return {
+        msgtype: 'markdown',
+        markdown: {
+          title,
+          text,
+        },
+        at,
+      };
     }
 
     function toPayload(msg, opts) {
@@ -131,6 +149,19 @@ function buildTDFromEnv() {
     // 新增：允许 raw/payload/body 直发
     function buildBodyAndHeaders(msg, opts) {
       const baseHeaders = { 'Content-Type': 'application/json', ...(opts && opts.headers ? opts.headers : {}) };
+
+      // 优先处理模板
+      if (opts && opts.template) {
+        let payload;
+        if (opts.template.toLowerCase() === 'dingtalk') {
+          payload = buildDingTalkPayload(msg, opts);
+        }
+        // 未来可在这里扩展 'wechat', 'feishu' 等模板
+        if (payload) {
+          return { body: JSON.stringify(payload), headers: baseHeaders };
+        }
+      }
+
       const hasPayload = opts && (opts.raw === true || Object.prototype.hasOwnProperty.call(opts, 'payload') || Object.prototype.hasOwnProperty.call(opts, 'body'));
       if (hasPayload) {
         const raw = Object.prototype.hasOwnProperty.call(opts, 'payload') ? opts.payload : (Object.prototype.hasOwnProperty.call(opts, 'body') ? opts.body : msg);
@@ -152,11 +183,24 @@ function buildTDFromEnv() {
     const { body, headers } = buildBodyAndHeaders(message, options || {});
 
     const results = [];
-    for (const url of urls) {
+    for (const webhook of urls) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
+
+      let finalUrl = webhook.url;
+      const { secret } = webhook;
+
+      // 如果提供了 secret，则执行钉钉加签逻辑
+      if (secret && typeof secret === 'string' && secret.startsWith('SEC')) {
+        const timestamp = Date.now();
+        const stringToSign = `${timestamp}\n${secret}`;
+        const signature = crypto.createHmac('sha256', secret).update(stringToSign).digest('base64');
+        const encodedSign = encodeURIComponent(signature);
+        finalUrl = `${finalUrl}&timestamp=${timestamp}&sign=${encodedSign}`;
+      }
+
       try {
-        const res = await fetch(url, {
+        const res = await fetch(finalUrl, {
           method: 'POST',
           headers,
           body,
@@ -180,15 +224,30 @@ function buildTDFromEnv() {
             ok = ok && Number(respJson.StatusCode) === 0;
           }
         }
-        results.push({ url, ok, status: res.status, body: respJson || respText });
+        results.push({ url: webhook.url, ok, status: res.status, body: respJson || respText });
       } catch (e) {
         clearTimeout(timeout);
-        results.push({ url, ok: false, error: e.message || String(e) });
+        results.push({ url: webhook.url, ok: false, error: e.message || String(e) });
       }
     }
 
     const delivered = results.filter(r => r.ok).length;
     return { ok: delivered > 0, delivered, results };
+  }
+
+  // playwright 工具集成
+  let _pwToolkit = null;
+  async function createPWToolkitProxy(cfgOverride = {}) {
+    if (!_pwToolkit) {
+      try {
+        const helperPath = path.resolve(__dirname, '../../../scripts/utils/playwrightHelper.js');
+        const { createPWToolkit } = require(helperPath);
+        _pwToolkit = await createPWToolkit(cfgOverride);
+      } catch (e) {
+        throw new Error('Playwright 集成失败: ' + (e && e.message || e));
+      }
+    }
+    return _pwToolkit;
   }
 
   const handler = {
@@ -199,6 +258,7 @@ function buildTDFromEnv() {
       if (prop === 'getParam') return getParam;
       if (prop === 'requireParam') return requireParam;
       if (prop === 'notify') return tdNotify;
+      if (prop === 'createPWToolkit') return createPWToolkitProxy;
       if (typeof prop !== 'symbol' && TD_UTILS && Object.prototype.hasOwnProperty.call(TD_UTILS, prop)) {
         return TD_UTILS[prop];
       }

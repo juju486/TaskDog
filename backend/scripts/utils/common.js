@@ -143,6 +143,124 @@ function filterCookies(inputCookies, targetDomains) {
   });
   return filteredCookies;
 }
+async function closePopups(page) {
+  // 以常见关闭按钮为例，可根据实际页面调整选择器
+  const selectors = [
+    'svg[data-testid*="close"]',
+    'svg[class*="close"]',
+    'i[class*="close"]',
+    'text="关闭"', // 新增文本选择器
+    'button:has-text("关闭")' // 备用选择器
+  ];
+  let clicked = false;
+  for (const selector of selectors) {
+    const popup = await page.$(selector);
+    if (popup) {
+      const result = await popup.click({ timeout: 200 }).catch(() => false);
+      if (result !== false) {
+        clicked = true;
+      }
+    }
+  }
+  if (clicked) {
+    // 如果有弹窗被关闭，递归再次尝试
+    await closePopups(page);
+  }
+}
+
+/**
+ * 物流规则配置
+ * 这是一个规则数组，每个元素代表一个或一组必须满足的条件 (AND 关系)。
+ * 
+ * 规则对象结构:
+ * {
+ *   group: 'group_name',      // (可选) 规则分组名
+ *   groupLogic: 'OR' | 'AND', // (可选, 仅分组第一条规则需要) 组内规则的关系
+ *   index: number,            // 要检查的物流信息在数组中的索引
+ *   keywords: string[],       // 要匹配的关键词列表
+ *   logic: 'OR' | 'AND'       // 关键词列表的匹配逻辑 (任一匹配或全部匹配)
+ * }
+ * 
+ * 示例解释:
+ * - 下面的配置表示：(第0条物流信息[满足条件A]) AND (第1、2、3条中任意一条[满足各自条件])
+ * - 条件A: 包含 '已派送至本' 或 '已投递' 或 ...
+ * - 条件B: 第1条包含 '上溪'
+ * - 条件C: 第2条包含 '上溪' 或 '金华义乌龙海店'
+ * - 条件D: 第3条同时包含 '义乌转运中心' 和 '官塘电退项目营业点'
+ */
+const WULIU_RULES_CONFIG = [
+  // 第一组规则 (独立规则，必须满足)
+  {
+    group: 'group1',
+    groupLogic: 'AND',
+    index: 0,
+    keywords: ['已派送至本', '已投递', '二楼仓库', '代收', '签收', '派送成功'],
+    logic: 'OR',
+  },
+  // 第二组规则 (B, C, D 规则满足其一即可)
+  {
+    group: 'group2',
+    groupLogic: 'OR',
+    index: 1,
+    keywords: ['上溪'],
+    logic: 'OR',
+  },
+  {
+    group: 'group2',
+    index: 2,
+    keywords: ['上溪', '金华义乌龙海店'],
+    logic: 'OR',
+  },
+  {
+    group: 'group2',
+    index: 3,
+    keywords: ['义乌转运中心', '官塘电退项目营业点'],
+    logic: 'OR',
+  },
+];
+
+function wuliu_rule(wuliulist) {
+  if (!Array.isArray(wuliulist)) return false;
+
+  console.log(`[物流检测] 当前物流信息列表:`, wuliulist);
+
+  const checkRule = (text, rule) => {
+    if (!text) return false;
+    if (rule.logic === 'AND') {
+      return rule.keywords.every(kw => text.includes(kw));
+    }
+    return rule.keywords.some(kw => text.includes(kw));
+  };
+
+  const groupedRules = WULIU_RULES_CONFIG.reduce((acc, rule) => {
+    const groupName = rule.group || `rule_${rule.index}`;
+    if (!acc[groupName]) {
+      acc[groupName] = { logic: rule.groupLogic || 'AND', rules: [] };
+    }
+    acc[groupName].rules.push(rule);
+    return acc;
+  }, {});
+
+  for (const groupName in groupedRules) {
+    const group = groupedRules[groupName];
+    const groupResults = group.rules.map(rule => checkRule(wuliulist[rule.index], rule));
+
+    let groupMatch = false;
+    if (group.logic === 'AND') {
+      groupMatch = groupResults.every(res => res);
+    } else {
+      groupMatch = groupResults.some(res => res);
+    }
+
+    if (!groupMatch) {
+      console.log(`[物流检测] 规则组 '${groupName}' 未通过`);
+      return false; // 任何一个AND连接的组失败，则整体失败
+    }
+  }
+
+  console.log('[物流检测] 所有规则组均通过');
+  return true; // 所有AND连接的组都成功
+}
 
 module.exports = {
   // 路径
@@ -154,5 +272,7 @@ module.exports = {
   fetchJSON,
   logger,
   cloud_cookie,
-  filterCookies
+  filterCookies,
+  closePopups,
+  wuliu_rule
 };

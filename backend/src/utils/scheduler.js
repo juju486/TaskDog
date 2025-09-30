@@ -519,6 +519,69 @@ async function testScript(script, overrideParams = undefined) {
   return result;
 }
 
+// 新增：获取解释器信息
+function getInterpreter(language) {
+  const isWin = process.platform === 'win32';
+  let command, args = [], options = {};
+
+  switch (language) {
+    case 'python':
+      command = isWin ? 'python' : 'python3';
+      break;
+    case 'node':
+    case 'javascript':
+      command = 'node';
+      const tdShim = path.join(__dirname, 'td_shims', 'node.js');
+      args = ['-r', tdShim];
+      break;
+    case 'batch':
+    case 'cmd':
+      command = isWin ? 'cmd.exe' : 'sh';
+      args = isWin ? ['/c'] : [];
+      break;
+    case 'powershell':
+      command = isWin ? 'powershell.exe' : 'pwsh';
+      args = isWin
+        ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File']
+        : ['-NoProfile', '-File'];
+      break;
+    case 'bash':
+    case 'shell':
+      command = 'bash';
+      break;
+    default:
+      // 对于未知类型，我们假定它是可直接执行的
+      // command 将在调用方被设置为脚本路径
+      command = null; 
+      options.shell = true;
+      break;
+  }
+  return { command, args, options };
+}
+
+// 新增：构建环境变量
+function buildEnvVars(script, params = {}) {
+  const env = buildExecutionEnv();
+  let globalsKV = {};
+  try { globalsKV = JSON.parse(env.TASKDOG_GLOBALS_JSON || '{}'); } catch { globalsKV = {}; }
+  
+  const baseParams = isPlainObject(script.default_params) ? script.default_params : {};
+  const overrideParams = isPlainObject(params) ? params : {};
+  const mergedParams = deepMerge(baseParams, overrideParams);
+
+  const resolvedParams = deepResolveTDRefs(mergedParams, globalsKV);
+  
+  try {
+    env.TASKDOG_PARAMS_JSON = JSON.stringify(resolvedParams);
+    const flat = flattenParams(isPlainObject(resolvedParams) ? resolvedParams : {});
+    for (const [k, v] of Object.entries(flat)) {
+      env[`TD_PARAM_${k}`] = v;
+    }
+  } catch {}
+
+  return env;
+}
+
 module.exports = {
   initScheduler,
   scheduleTask,
@@ -526,5 +589,6 @@ module.exports = {
   executeTask,
   executeScript,
   testScript,
-  logTaskExecution
+  getInterpreter,
+  buildEnvVars,
 };

@@ -33,25 +33,22 @@
         <div v-if="paramsError" class="error-tip">{{ paramsError }}</div>
       </div>
 
-      <div v-if="result" class="output-wrapper">
+      <div class="output-wrapper">
+        <div class="output-section">
+          <h4>输出:</h4>
+          <pre class="output-content" ref="outputRef"><code v-for="(line, i) in outputLines" :key="i" :class="line.type">{{ line.line }}</code></pre>
+        </div>
+      </div>
+
+      <div v-if="finalExitCode !== null" class="output-wrapper">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="退出代码">
-            <el-tag :type="result?.exitCode === 0 ? 'success' : 'danger'">{{ result?.exitCode }}</el-tag>
+            <el-tag :type="finalExitCode === 0 ? 'success' : 'danger'">{{ finalExitCode }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="执行状态">
-            <el-tag :type="result?.exitCode === 0 ? 'success' : 'danger'">{{ result?.exitCode === 0 ? '成功' : '失败' }}</el-tag>
+            <el-tag :type="finalExitCode === 0 ? 'success' : 'danger'">{{ finalExitCode === 0 ? '成功' : '失败' }}</el-tag>
           </el-descriptions-item>
         </el-descriptions>
-
-        <div v-if="result?.stdout" class="output-section">
-          <h4>标准输出:</h4>
-          <pre class="output-content">{{ result.stdout }}</pre>
-        </div>
-
-        <div v-if="result?.stderr" class="output-section">
-          <h4>错误输出:</h4>
-          <pre class="output-content error">{{ result.stderr }}</pre>
-        </div>
       </div>
     </div>
 
@@ -63,9 +60,8 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useScriptStore } from '@/stores/script'
 import { configApi } from '@/api/modules'
 
 const props = defineProps({
@@ -74,26 +70,34 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 
-const scriptStore = useScriptStore()
-
 const visible = ref(false)
 const script = ref(null)
 const paramsText = ref('')
 const paramsError = ref('')
 const running = ref(false)
-const result = ref(null)
+const outputLines = ref([])
+const finalExitCode = ref(null)
 const globalsKeys = ref([])
 const inputRef = ref()
+const outputRef = ref()
+let eventSource = null
 
 const toPretty = (obj) => {
   try { return JSON.stringify(obj ?? {}, null, 2) } catch { return '' }
 }
 
 const loadFromScript = (s) => {
-  if (!s) { paramsText.value = ''; paramsError.value = ''; result.value = null; return }
+  if (!s) {
+    paramsText.value = ''
+    paramsError.value = ''
+    outputLines.value = []
+    finalExitCode.value = null
+    return
+  }
   paramsText.value = toPretty(s.default_params || {})
   paramsError.value = ''
-  result.value = null
+  outputLines.value = []
+  finalExitCode.value = null
 }
 
 const fetchGlobals = async () => {
@@ -160,21 +164,67 @@ const resetToDefault = () => {
 const runTest = async () => {
   if (!script.value) return
   if (!validateParams()) return
+
   running.value = true
+  outputLines.value = []
+  finalExitCode.value = null
+
+  if (eventSource) {
+    eventSource.close()
+  }
+
   try {
-    const payload = paramsText.value && paramsText.value.trim() ? JSON.parse(paramsText.value) : {}
-    const r = await scriptStore.testScript(script.value.id, payload)
-    result.value = r
-    if (r?.exitCode === 0) ElMessage.success('测试成功')
-    else ElMessage.warning('测试结束（可能失败），请查看输出')
+    const params = paramsText.value && paramsText.value.trim() ? JSON.parse(paramsText.value) : {}
+    const url = `/api/scripts/${script.value.id}/test-stream?params=${encodeURIComponent(JSON.stringify(params))}`
+    eventSource = new EventSource(url)
+
+    eventSource.addEventListener('start', () => {
+      outputLines.value.push({ type: 'info', line: '--- 连接成功，等待脚本执行 ---\n' })
+    })
+
+    eventSource.addEventListener('log', (event) => {
+      const data = JSON.parse(event.data)
+      outputLines.value.push({ type: data.type, line: data.line + '\n' })
+      // 自动滚动到底部
+      nextTick(() => {
+        if (outputRef.value) {
+          outputRef.value.scrollTop = outputRef.value.scrollHeight
+        }
+      })
+    })
+
+    eventSource.addEventListener('exit', (event) => {
+      const data = JSON.parse(event.data)
+      finalExitCode.value = data.exitCode
+      if (data.exitCode === 0) {
+        ElMessage.success('测试成功')
+      } else {
+        ElMessage.warning('测试结束（失败），请查看输出')
+      }
+      eventSource.close()
+      running.value = false
+    })
+
+    eventSource.onerror = () => {
+      outputLines.value.push({ type: 'stderr', line: '--- 连接错误或中断 ---\n' })
+      ElMessage.error('与服务器的连接中断')
+      eventSource.close()
+      running.value = false
+      if (finalExitCode.value === null) finalExitCode.value = -1
+    }
   } catch (e) {
-    ElMessage.error('测试失败')
-  } finally {
+    ElMessage.error('启动测试失败: ' + (e.message || e))
     running.value = false
+    if (finalExitCode.value === null) finalExitCode.value = -1
   }
 }
 
-watch(() => props.modelValue, v => visible.value = v)
+watch(() => props.modelValue, v => {
+  visible.value = v
+  if (!v && eventSource) {
+    eventSource.close() // 关闭对话框时确保断开连接
+  }
+})
 watch(() => props.script, s => { script.value = s; loadFromScript(s) }, { immediate: true })
 watch(visible, v => emit('update:modelValue', v))
 
@@ -193,6 +243,8 @@ onMounted(() => { fetchGlobals() })
 .output-wrapper { margin-top: 16px; }
 .output-section { margin-top: 12px; }
 .output-section h4 { margin: 0 0 8px 0; color: #303133; font-size: 14px; }
-.output-content { background: #f5f7fa; border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px; margin: 0; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; max-height: 240px; overflow-y: auto; }
-.output-content.error { background: #fef0f0; border-color: #fbc4c4; color: #f56c6c; }
+.output-content { background: #f5f7fa; border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px; margin: 0; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; max-height: 320px; overflow-y: auto; }
+.output-content .stdout { color: #303133; }
+.output-content .stderr { color: #f56c6c; }
+.output-content .info { color: #909399; }
 </style>

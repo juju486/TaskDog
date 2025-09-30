@@ -8,7 +8,8 @@
       <el-form-item label="URL 列表">
         <div class="list">
           <div v-for="(w, i) in model.notify.webhook.items" :key="i" class="list-row">
-            <el-input v-model="w.url" placeholder="https://example.com/hook" />
+            <el-input v-model="w.url" placeholder="Webhook URL" />
+            <el-input v-model="w.secret" placeholder="Secret (可选, 用于钉钉加签)" />
             <el-button type="danger" link @click="removeWebhook(i)">删除</el-button>
           </div>
           <el-button type="primary" link @click="addWebhook">+ 新增</el-button>
@@ -45,7 +46,7 @@
 const props = defineProps({ model: { type: Object, required: true } })
 const addWebhook = () => {
   if (!Array.isArray(props.model.notify.webhook.items)) props.model.notify.webhook.items = []
-  props.model.notify.webhook.items.push({ url: '' })
+  props.model.notify.webhook.items.push({ url: '', secret: '' })
 }
 const removeWebhook = (i) => {
   props.model.notify.webhook.items.splice(i, 1)
@@ -56,5 +57,5 @@ const removeWebhook = (i) => {
 .subsection { margin-bottom: 16px; }
 .subsection-title { font-weight: 600; margin: 8px 0 12px; }
 .list { display: grid; gap: 8px; }
-.list-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.list-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 </style>

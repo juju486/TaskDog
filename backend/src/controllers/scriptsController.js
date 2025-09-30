@@ -10,6 +10,8 @@ const {
   fileExists,
   isSupportedLanguage
 } = require('../utils/fileManager');
+const { spawn } = require('child_process');
+const { getInterpreter, buildEnvVars } = require('../utils/scheduler');
 
 // 生成不重复的脚本路径（优先在 scripts 目录内）
 async function generateUniqueScriptPath(baseName, language, preferFilePath = null) {
@@ -342,6 +344,82 @@ async function test(ctx) {
   }
 }
 
+// 新增：流式测试运行
+async function testStream(ctx) {
+  const db = getDatabase();
+  const { id } = ctx.params;
+  const script = db.get('scripts').find({ id: parseInt(id) }).value();
+
+  if (!script) {
+    ctx.status = 404;
+    ctx.body = 'Script not found';
+    return;
+  }
+
+  // 从查询参数获取 overrideParams
+  const queryParams = ctx.query.params ? JSON.parse(ctx.query.params) : undefined;
+
+  ctx.request.socket.setTimeout(0);
+  ctx.req.socket.setNoDelay(true);
+  ctx.req.socket.setKeepAlive(true);
+
+  ctx.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  const stream = new require('stream').PassThrough();
+  ctx.status = 200;
+  ctx.body = stream;
+
+  const sendEvent = (event, data) => {
+    stream.write(`event: ${event}\n`);
+    stream.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const sendLog = (type, chunk) => {
+    const lines = chunk.toString().split(/\r?\n/);
+    for (const line of lines) {
+      if (line) {
+        sendEvent('log', { type, line });
+      }
+    }
+  };
+
+  try {
+    const interpreter = getInterpreter(script.language);
+    const scriptPath = path.resolve(process.cwd(), script.file_path);
+    const env = buildEnvVars(script, queryParams);
+
+    const child = spawn(interpreter.command, [...interpreter.args, scriptPath], {
+      cwd: path.dirname(scriptPath),
+      env,
+      shell: true,
+    });
+
+    sendEvent('start', { message: '脚本开始执行...' });
+
+    child.stdout.on('data', (chunk) => sendLog('stdout', chunk));
+    child.stderr.on('data', (chunk) => sendLog('stderr', chunk));
+
+    child.on('close', (code) => {
+      sendEvent('exit', { exitCode: code });
+      stream.end();
+    });
+
+    child.on('error', (err) => {
+      sendLog('stderr', `执行失败: ${err.message}`);
+      sendEvent('exit', { exitCode: 1 });
+      stream.end();
+    });
+  } catch (error) {
+    sendLog('stderr', `启动脚本时出错: ${error.message}`);
+    sendEvent('exit', { exitCode: -1 });
+    stream.end();
+  }
+}
+
 // 下载
 async function download(ctx) {
   const db = getDatabase();
@@ -485,4 +563,4 @@ async function importFromDir(ctx) {
   }
 }
 
-module.exports = { list, getById, create, update, remove, test, download, importFromDir };
+module.exports = { list, getById, create, update, remove, test, testStream, download, importFromDir };
