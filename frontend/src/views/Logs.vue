@@ -159,7 +159,13 @@
     </div>
 
     <!-- 日志详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="日志详情" width="900px">
+    <el-dialog 
+      v-model="detailDialogVisible" 
+      title="日志详情" 
+      width="900px"
+      :append-to-body="true"
+      :lock-scroll="true"
+    >
       <div v-if="currentLog" class="log-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="类型">
