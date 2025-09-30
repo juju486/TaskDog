@@ -120,7 +120,17 @@ function buildTDFromEnv() {
     }
 
     function toPayload(msg, opts) {
-      const now = new Date().toISOString();
+      // 使用中国时区时间
+      const now = new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).format(new Date()).replace(/\//g, '-').replace(',', '');
       const isObj = msg && typeof msg === 'object';
       const level = (opts && typeof opts.level === 'string') ? opts.level : 'info';
       const title = (opts && typeof opts.title === 'string' && opts.title.trim()) ? opts.title.trim() : 'TaskDog Notification';

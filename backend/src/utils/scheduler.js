@@ -5,6 +5,23 @@ const { readScriptFile, resolveScriptFullPath } = require('./fileManager');
 const fs = require('fs-extra');
 const path = require('path');
 
+// 中国时区时间字符串：YYYY-MM-DD HH:mm:ss
+function nowCN() {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date());
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+}
+
 // 新增：多格式环境变量展开（支持 ${VAR}、$VAR、%VAR%、~）
 function expandEnvLike(input, envMap = {}, extraMap = {}) {
   if (input == null) return input;
@@ -24,7 +41,7 @@ function expandEnvLike(input, envMap = {}, extraMap = {}) {
 
     // ~ -> HOME/USERPROFILE（仅在开头，且后面是 / 或 \ 或 结束）
     const homeDir = base.HOME || base.USERPROFILE || process.env.HOME || process.env.USERPROFILE || '';
-    str = str.replace(/^(~)(?=$|[\/])/, homeDir);
+  str = str.replace(/^(~)(?=$|[/])/, homeDir);
 
     // ${VAR}（允许中文及符号，直到遇到 }）
     str = str.replace(/\$\{([^}]+)\}/g, (_, key) => {
@@ -477,7 +494,7 @@ function logTaskExecution(taskId, scriptId, type, message, details = null) {
       script_id: scriptId,
       task_id: taskId,
       details: details ? JSON.stringify(details) : null,
-      created_at: new Date().toISOString()
+      created_at: nowCN()
     };
     
     // 添加日志

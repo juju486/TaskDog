@@ -159,7 +159,11 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('TM_refunds') : 
   }
 
   try {
-    await page.goto('https://myseller.taobao.com/home.htm/trade-platform/refund-list');
+
+    await page.goto('https://myseller.taobao.com/home.htm/QnworkbenchHome/');
+
+    await page.pause();
+    // await page.goto('https://myseller.taobao.com/home.htm/trade-platform/refund-list');
 
     await page.waitForTimeout(5000);
 

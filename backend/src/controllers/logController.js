@@ -1,5 +1,22 @@
 const { getDatabase } = require('../utils/database');
 
+// 中国时区时间字符串：YYYY-MM-DD HH:mm:ss
+function nowCN() {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date());
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+}
+
 function toTimestamp(input) {
   if (!input) return NaN;
   if (input instanceof Date) return input.getTime();
@@ -114,7 +131,7 @@ async function create(ctx) {
   if (!type || !message) { ctx.status = 400; ctx.body = { success: false, message: 'Type and message are required' }; return; }
   try {
     const nextId = db.get('_meta.nextLogId').value();
-    const newLog = { id: nextId, type, message, script_id: script_id ? parseInt(script_id) : null, task_id: task_id ? parseInt(task_id) : null, details: details || null, created_at: new Date().toISOString() };
+  const newLog = { id: nextId, type, message, script_id: script_id ? parseInt(script_id) : null, task_id: task_id ? parseInt(task_id) : null, details: details || null, created_at: nowCN() };
     db.get('logs').push(newLog).write();
     db.set('_meta.nextLogId', nextId + 1).write();
     ctx.body = { success: true, data: newLog };
