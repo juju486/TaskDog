@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Scripts from '@/views/Scripts.vue'
 import Tasks from '@/views/Tasks.vue'
 import Config from '@/views/Config.vue'
+import Tools from '@/views/Tools.vue'
 import Logs from '@/views/Logs.vue'
 import Globals from '@/views/globals/Globals.vue'
 
@@ -29,6 +30,11 @@ const routes = [
     path: '/config',
     name: 'Config',
     component: Config
+  },
+  {
+    path: '/tools',
+    name: 'Tools',
+    component: Tools
   },
   {
     path: '/logs',

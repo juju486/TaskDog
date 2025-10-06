@@ -13,13 +13,21 @@
 
   说明：
   - 会从后端 /api/config/all 读取 playwright 配置（需 Node >= 18）。
-  - 需要在 Config -> 依赖 中安装 node 包：playwright
+  - 需要在 Config -> 依赖 中安装 node 包：playwright-extra, puppeteer-extra-plugin-stealth
   - 如首次使用可能需要安装浏览器：可在命令行进入 backend/scripts 执行：npx playwright install
-  - 新增：若启动时报“Executable doesn't exist/请运行 npx playwright install”，将自动尝试安装对应浏览器后重试。
 */
 
 const path = require('path');
 const { spawnSync } = require('child_process');
+// 使用 playwright-extra 替代 playwright
+const { chromium, firefox, webkit } = require('playwright-extra');
+// 加载 stealth 插件
+const stealth = require('puppeteer-extra-plugin-stealth')();
+
+// 为所有浏览器启用 stealth 插件
+chromium.use(stealth);
+firefox.use(stealth);
+webkit.use(stealth);
 
 const DEFAULTS = {
   browser: 'chromium', // chromium | firefox | webkit
@@ -31,12 +39,54 @@ const DEFAULTS = {
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   locale: 'zh-CN',
   timezoneId: 'Asia/Shanghai',
-  storageStatePath: '',
-  video: 'off', // off | on | retain-on-failure
-  screenshot: 'only-on-failure', // off | on | only-on-failure
-  downloadsPath: '',
-  autoInstallBrowsers: false,
+  authName: '', // 新增：用于从 auth.json 加载/保存的条目名称
+  autoSaveStorageState: false, // 新增：是否在 close 时自动保存
+  autoInstallBrowsers: true, // 默认开启自动安装
 };
+
+// persistent auth storage file (存放 Playwright 登录态列表)
+const AUTH_FILE = path.resolve(__dirname, 'auth.json');
+
+function _loadAuthStore() {
+  const fs = require('fs');
+  try {
+    if (!fs.existsSync(AUTH_FILE)) return [];
+    const raw = fs.readFileSync(AUTH_FILE, 'utf8') || '[]';
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+function _saveAuthStore(arr) {
+  const fs = require('fs');
+  try {
+    fs.writeFileSync(AUTH_FILE, JSON.stringify(arr, null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveAuthEntry(name, storageState) {
+  if (!name) throw new Error('需要提供 name 来保存登录态');
+  const arr = _loadAuthStore();
+  // remove existing with same name
+  const filtered = arr.filter(x => x && x.name !== name);
+  filtered.push({ name, created_at: new Date().toISOString(), state: storageState });
+  return _saveAuthStore(filtered);
+}
+
+function getAuthEntry(name) {
+  const arr = _loadAuthStore();
+  return arr.find(x => x && x.name === name) || null;
+}
+
+function listAuthEntries() {
+  return _loadAuthStore().map(x => ({ name: x.name, created_at: x.created_at }));
+}
 
 function scriptsRoot() {
   // 本文件位于 backend/scripts/utils
@@ -51,30 +101,10 @@ async function fetchPlaywrightConfig() {
     const json = await res.json();
     const cfg = (json && json.data && json.data.playwright) || {};
     return { ...DEFAULTS, ...cfg };
-  } catch {
+  } catch (e) {
+    console.error('获取 Playwright 配置失败:', e.message);
     return { ...DEFAULTS };
   }
-}
-
-function tryRequirePlaywright() {
-  try { return require('playwright'); } catch { }
-  try { return require(path.join(scriptsRoot(), 'node_modules', 'playwright')); } catch { }
-  return null;
-}
-
-function ensureBrowsersInstalledIfNeeded(pw, cfg) {
-  if (!cfg.autoInstallBrowsers) return;
-  try {
-    // 简单探测：尝试获取可执行文件路径
-    const type = cfg.browser in pw ? cfg.browser : 'chromium';
-    const executablePath = pw[type].executablePath ? pw[type].executablePath() : '';
-    if (executablePath) return;
-  } catch { }
-
-  // 在 scripts 根目录执行安装
-  const cwd = scriptsRoot();
-  const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  spawnSync(cmd, ['playwright', 'install'], { cwd, stdio: 'ignore', shell: process.platform === 'win32' });
 }
 
 // 规范化代理地址，缺少协议时自动补全
@@ -82,31 +112,26 @@ function normalizeProxyServer(server) {
   if (!server) return '';
   const s = String(server).trim();
   if (/^(https?:|socks4:|socks5:)/i.test(s)) return s; // 已包含协议
-  // 端口 443 默认按 HTTPS 代理处理
   if (/:443(\/|$)/.test(s)) return 'https://' + s;
   return 'http://' + s;
 }
 
 class PWToolkit {
-  constructor(cfg, pw) {
+  constructor(cfg, browserLauncher) {
     this.cfg = cfg;
-    this.pw = pw;
+    this.browserLauncher = browserLauncher;
     this.browser = null;
     this.context = null;
   }
 
   async init() {
-    if (!this.pw) throw new Error('未找到依赖 playwright，请在 Config/依赖 中安装 playwright');
-    ensureBrowsersInstalledIfNeeded(this.pw, this.cfg);
     return this;
   }
 
   withBaseURL(pathname) {
     let base = (this.cfg.baseURL || '').trim();
     if (base) {
-      // 去掉末尾斜杠
       base = base.replace(/\/$/, '');
-      // 若未包含协议，则默认补 http://
       if (!/^https?:\/\//i.test(base)) {
         base = 'http://' + base;
       }
@@ -117,35 +142,38 @@ class PWToolkit {
 
   async launch() {
     if (this.browser) return this.browser;
-    const type = this.cfg.browser in this.pw ? this.cfg.browser : 'chromium';
-    const { headless, slowMo, proxy } = this.cfg;
+    
+    const { headless, slowMo, proxy, devtools } = this.cfg;
     const server = proxy && proxy.server ? normalizeProxyServer(proxy.server) : undefined;
     const proxyOpt = server ? { server, username: proxy.username || undefined, password: proxy.password || undefined } : undefined;
-    const doLaunch = async () => await this.pw[type].launch({ headless, slowMo, proxy: proxyOpt });
+    
+    // 如果 headless 为 false 且 devtools 为 true，则打开开发者工具
+    const launchOptions = { headless, slowMo, proxy: proxyOpt, devtools: !headless && devtools };
+    const doLaunch = async () => await this.browserLauncher.launch(launchOptions);
+    
     try {
       this.browser = await doLaunch();
     } catch (e) {
       const msg = String((e && e.message) || e || '');
-      // 代理地址格式问题
-      if (/Invalid URL/i.test(msg) && proxy && proxy.server) {
-        throw new Error(`Playwright 代理地址无效：${proxy.server}。请使用带协议的地址，例如：http://host:port、https://host:port 或 socks5://host:port`);
-      }
-      // 网络被中断（常见：代理/TLS/防火墙）
-      if (/ECONNRESET/i.test(msg)) {
-        throw new Error(`网络连接被重置（ECONNRESET）。请检查代理/TLS/防火墙设置，或先在配置中清空代理后重试。原始错误：${msg}`);
-      }
-      const needInstall = /Executable doesn't exist|download new browsers|playwright install/i.test(msg);
-      if (needInstall) {
-        // 自动安装缺失浏览器后重试
+      if (/Executable doesn't exist/i.test(msg) && this.cfg.autoInstallBrowsers) {
+        console.log(`Playwright 浏览器 (${this.cfg.browser}) 未安装，将自动尝试安装...`);
         const cwd = scriptsRoot();
         const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
         try {
-          // 尽量安装指定内核，速度更快
-          spawnSync(cmd, ['playwright', 'install', type], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
-        } catch { /* ignore */ }
-        // 二次尝试
-        this.browser = await doLaunch();
+          spawnSync(cmd, ['playwright', 'install', this.cfg.browser], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+          console.log('浏览器安装完成，正在重试启动...');
+          this.browser = await doLaunch();
+        } catch (installError) {
+          console.error('浏览器自动安装失败:', installError);
+          throw e; // 抛出原始错误
+        }
       } else {
+        if (/Invalid URL/i.test(msg) && proxy && proxy.server) {
+          throw new Error(`Playwright 代理地址无效：${proxy.server}。请使用带协议的地址，例如：http://host:port`);
+        }
+        if (/ECONNRESET/i.test(msg)) {
+          throw new Error(`网络连接被重置（ECONNRESET）。请检查代理/TLS/防火墙设置。`);
+        }
         throw e;
       }
     }
@@ -153,6 +181,16 @@ class PWToolkit {
   }
 
   async close() {
+    if (this.context && this.cfg && this.cfg.autoSaveStorageState && this.cfg.authName) {
+      try {
+        const state = await this.context.storageState();
+        saveAuthEntry(this.cfg.authName, state);
+        console.log(`已自动保存登录态到 ${this.cfg.authName}`);
+      } catch (e) {
+        console.error(`自动保存登录态失败:`, e.message);
+      }
+    }
+
     if (this.context) {
       try { await this.context.close(); } catch { }
       this.context = null;
@@ -164,657 +202,119 @@ class PWToolkit {
   }
 
   async newContext(options = {}) {
-    // 确保已启动浏览器
     if (!this.browser) {
       await this.launch();
     }
 
-    // 仅挑选 BrowserContext 支持的参数，避免无效字段导致报错
     const cfg = this.cfg || {};
-    const allowed = {};
-    if (cfg.viewport) allowed.viewport = cfg.viewport;
-    if (cfg.userAgent) allowed.userAgent = cfg.userAgent;
-    if (cfg.locale) allowed.locale = cfg.locale;
-    if (cfg.timezoneId) allowed.timezoneId = cfg.timezoneId;
-    if (cfg.ignoreHTTPSErrors !== undefined) allowed.ignoreHTTPSErrors = !!cfg.ignoreHTTPSErrors;
-    // 不传 baseURL（在 withBaseURL 中进行拼接处理）
-    if (cfg.extraHTTPHeaders) allowed.extraHTTPHeaders = cfg.extraHTTPHeaders;
-    if (cfg.acceptDownloads !== undefined) allowed.acceptDownloads = !!cfg.acceptDownloads;
-    // 录像配置（仅在需要时启用目录），忽略 test runner 的 video/screenshot 语义
+    const contextOptions = {
+      ...options,
+      viewport: cfg.viewport,
+      userAgent: cfg.userAgent,
+      locale: cfg.locale,
+      timezoneId: cfg.timezoneId,
+      ignoreHTTPSErrors: !!cfg.ignoreHTTPSErrors,
+      acceptDownloads: !!cfg.acceptDownloads,
+    };
+
     if (cfg.video && cfg.video !== 'off') {
       const dir = path.resolve(scriptsRoot(), 'temp', 'videos');
-      allowed.recordVideo = { dir };
+      require('fs').mkdirSync(dir, { recursive: true });
+      contextOptions.recordVideo = { dir };
     }
 
-    const contextOptions = { ...allowed, ...options };
-    if (cfg.storageStatePath) {
-      contextOptions.storageState = path.resolve(scriptsRoot(), cfg.storageStatePath);
+    // 处理 storageState
+    if (cfg.authName) {
+      const entry = getAuthEntry(cfg.authName);
+      if (entry && entry.state) {
+        contextOptions.storageState = entry.state;
+        console.log(`已加载名为 ${cfg.authName} 的登录态。`);
+      } else {
+        console.log(`未找到名为 ${cfg.authName} 的登录态，将以无痕模式启动。`);
+      }
     }
 
     const context = await this.browser.newContext(contextOptions);
+
+    // 设置默认超时
+    if (cfg.timeout && typeof cfg.timeout === 'number' && cfg.timeout > 0) {
+      context.setDefaultTimeout(cfg.timeout);
+    }
+
     this.context = context;
     return context;
   }
 
   async newPage(options = {}) {
-    const context = await this.newContext(options);
-    const page = await context.newPage();
+    // 如果没有 context，创建一个
+    if (!this.context) {
+      await this.newContext(options);
+    }
+    const page = await this.context.newPage();
     return page;
   }
 
+  // 将当前 context 的 storageState 保存到 auth.json（按 name 存储）
+  async saveCurrentStorageState(name) {
+    if (!name) throw new Error('saveCurrentStorageState 需要一个 name 参数');
+    if (!this.context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
+    const state = await this.context.storageState();
+    const ok = saveAuthEntry(name, state);
+    if (!ok) throw new Error('保存到 auth.json 失败');
+    return true;
+  }
+
+  // ================== 常用方法代理 ==================
+
+  async addCookies(cookies) {
+    if (!this.context) await this.newContext();
+    return this.context.addCookies(cookies);
+  }
+
   async goto(url, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
+    const page = this.getPage();
     return page.goto(url, options);
   }
 
   async screenshot(options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
+    const page = this.getPage();
     return page.screenshot(options);
   }
-
-  async video() {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const videos = await page.context().videos();
-    return videos.length > 0 ? videos[0] : null;
+  
+  // ===============================================
+  
+  // 暴露 context 和 page，方便直接调用
+  getContext() {
+    if (!this.context) throw new Error('Context not initialized. Call newContext() or newPage() first.');
+    return this.context;
   }
 
-  async downloadFile(url, path) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const response = await page.goto(url);
-    if (!response.ok()) throw new Error(`下载失败：${response.status()} ${response.statusText()}`);
-    const buffer = await response.buffer();
-    const fs = require('fs');
-    fs.writeFileSync(path, buffer);
-    return path;
-  }
-
-  async setGeolocation(latitude, longitude, options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.grantPermissions(['geolocation']);
-    return context.setGeolocation({ latitude, longitude }, options);
-  }
-
-  async addInitScript(script) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.addInitScript(script);
-  }
-
-  async emulate(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.emulate(options);
-  }
-
-  async setUserAgent(userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setUserAgent(userAgent);
-  }
-
-  async setLocale(locale) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setLocale(locale);
-  }
-
-  async setTimezone(timezoneId) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setTimezone(timezoneId);
-  }
-
-  async setStorageState(state) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setStorageState(state);
-  }
-
-  async clearBrowserCookies() {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    const pages = context.pages();
-    for (const page of pages) {
-      try { await page.context().clearCookies(); } catch { }
+  getPage() {
+    if (!this.context || this.context.pages().length === 0) {
+      throw new Error('Page not initialized. Call newPage() first.');
     }
-  }
-
-  async clearBrowserCache() {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    const pages = context.pages();
-    for (const page of pages) {
-      try { await page.context().clearCache(); } catch { }
-    }
-  }
-
-  async waitForTimeout(timeout) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.waitForTimeout(timeout);
-  }
-
-  async waitForEvent(event, options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.waitForEvent(event, options);
-  }
-
-  async expect(locator, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const { expect } = require('@playwright/test');
-    return expect(locator, options);
-  }
-
-  async fill(selector, value, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.fill(selector, value, options);
-  }
-
-  async click(selector, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.click(selector, options);
-  }
-
-  async dblclick(selector, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.dblclick(selector, options);
-  }
-
-  async rightclick(selector, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.click(selector, { button: 'right', ...options });
-  }
-
-  async hover(selector, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.hover(selector, options);
-  }
-
-  async selectOption(selector, value, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.selectOption(selector, value, options);
-  }
-
-  async uploadFile(selector, filePath, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const input = await page.$(selector);
-    if (!input) throw new Error(`未找到文件上传控件：${selector}`);
-    return input.setInputFiles(filePath, options);
-  }
-
-  async setInputFiles(selector, filePath, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const input = await page.$(selector);
-    if (!input) throw new Error(`未找到文件输入控件：${selector}`);
-    return input.setInputFiles(filePath, options);
-  }
-
-  async press(key, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.press(key, options);
-  }
-
-  async type(text, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.type(text, options);
-  }
-
-  async gotoIfEmpty(url, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const isEmpty = await page.evaluate(() => !document.body.innerHTML.trim());
-    if (isEmpty) return page.goto(url, options);
-  }
-
-  async fillFormAndSubmit(selector, data, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const form = await page.$(selector);
-    if (!form) throw new Error(`未找到表单：${selector}`);
-    const inputs = await form.$$('input, textarea, select');
-    for (const input of inputs) {
-      const name = await input.getAttribute('name');
-      const value = data[name] || '';
-      if (input.tagName.toLowerCase() === 'select') {
-        await input.selectOption(value);
-      } else {
-        await input.fill(value);
-      }
-    }
-    return Promise.all([
-      form.dispatchEvent('submit', { bubbles: true }),
-      page.waitForNavigation(options),
-    ]);
-  }
-
-  async waitForSelector(selector, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.waitForSelector(selector, options);
-  }
-
-  async waitForResponse(urlOrPredicate, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.waitForResponse(urlOrPredicate, options);
-  }
-
-  async waitForRequest(urlOrPredicate, options) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.waitForRequest(urlOrPredicate, options);
-  }
-
-  async route(url, handler) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.route(url, handler);
-  }
-
-  async unroute(url, handler) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.unroute(url, handler);
-  }
-
-  async addRequestInterceptor(handler) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.addInitScript(() => {
-      window.__request_interceptor__ = handler.toString();
-    });
-  }
-
-  async removeRequestInterceptor() {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    return page.addInitScript(() => {
-      delete window.__request_interceptor__;
-    });
-  }
-
-  async interceptRequest(request) {
-    const page = this.context && this.context.pages().length > 0 ? this.context.pages()[0] : null;
-    if (!page) throw new Error('未找到页面实例，请先通过 newPage() 创建页面');
-    const handler = page.evaluate(() => window.__request_interceptor__);
-    if (typeof handler !== 'function') return;
-    return handler(request);
-  }
-
-  async setNetworkConditions(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setNetworkConditions(options);
-  }
-
-  async addCookies(cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.addCookies(cookies);
-  }
-
-  async clearCookies() {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.clearCookies();
-  }
-
-  async setExtraHTTPHeaders(headers) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setExtraHTTPHeaders(headers);
-  }
-
-  async setOffline(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setOffline(options);
-  }
-
-  async setOnline(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setOnline(options);
-  }
-
-  async setRequestInterception(value) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setRequestInterception(value);
-  }
-
-  async setUserAgentAndAcceptLanguage(userAgent, acceptLanguage) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setUserAgent(userAgent);
-    return context.setExtraHTTPHeaders({ 'Accept-Language': acceptLanguage });
-  }
-
-  async setJavaScriptEnabled(enabled) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setJavaScriptEnabled(enabled);
-  }
-
-  async setViewportSize(width, height) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setViewportSize({ width, height });
-  }
-
-  async setTouchOptions(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setTouchOptions(options);
-  }
-
-  async setFileChooserOptions(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setFileChooserOptions(options);
-  }
-
-  async setGeolocationOptions(options) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setGeolocationOptions(options);
-  }
-
-  async setPermissions(permissions) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setPermissions(permissions);
-  }
-
-  async setProxy(proxy) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setProxy(proxy);
-  }
-
-  async setRequestHeaders(headers) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setRequestHeaders(headers);
-  }
-
-  async setResponseHeaders(headers) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    return context.setResponseHeaders(headers);
-  }
-
-  async setUserAgentAndViewport(userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setJavaScriptEnabledAndUserAgent(enabled, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setJavaScriptEnabled(enabled);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setOfflineAndUserAgent(enabled, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOffline(enabled);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setOnlineAndUserAgent(enabled, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOnline(enabled);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setRequestInterceptionAndUserAgent(enabled, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestInterception(enabled);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setExtraHTTPHeadersAndUserAgent(headers, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setExtraHTTPHeaders(headers);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setNetworkConditionsAndUserAgent(options, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setNetworkConditions(options);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setPermissionsAndUserAgent(permissions, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setPermissions(permissions);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setProxyAndUserAgent(proxy, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setProxy(proxy);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setRequestHeadersAndUserAgent(headers, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestHeaders(headers);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setResponseHeadersAndUserAgent(headers, userAgent) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setResponseHeaders(headers);
-    return context.setUserAgent(userAgent);
-  }
-
-  async setJavaScriptEnabledAndUserAgentAndViewport(enabled, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setJavaScriptEnabled(enabled);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setOfflineAndUserAgentAndViewport(enabled, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOffline(enabled);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setOnlineAndUserAgentAndViewport(enabled, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOnline(enabled);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setRequestInterceptionAndUserAgentAndViewport(enabled, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestInterception(enabled);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setExtraHTTPHeadersAndUserAgentAndViewport(headers, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setExtraHTTPHeaders(headers);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setNetworkConditionsAndUserAgentAndViewport(options, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setNetworkConditions(options);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setPermissionsAndUserAgentAndViewport(permissions, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setPermissions(permissions);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setProxyAndUserAgentAndViewport(proxy, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setProxy(proxy);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setRequestHeadersAndUserAgentAndViewport(headers, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestHeaders(headers);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setResponseHeadersAndUserAgentAndViewport(headers, userAgent, viewport) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setResponseHeaders(headers);
-    await context.setUserAgent(userAgent);
-    return context.setViewportSize(viewport);
-  }
-
-  async setJavaScriptEnabledAndUserAgentAndViewportAndCookies(enabled, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setJavaScriptEnabled(enabled);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setOfflineAndUserAgentAndViewportAndCookies(enabled, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOffline(enabled);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setOnlineAndUserAgentAndViewportAndCookies(enabled, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setOnline(enabled);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setRequestInterceptionAndUserAgentAndViewportAndCookies(enabled, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestInterception(enabled);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setExtraHTTPHeadersAndUserAgentAndViewportAndCookies(headers, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setExtraHTTPHeaders(headers);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setNetworkConditionsAndUserAgentAndViewportAndCookies(options, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setNetworkConditions(options);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setPermissionsAndUserAgentAndViewportAndCookies(permissions, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setPermissions(permissions);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setProxyAndUserAgentAndViewportAndCookies(proxy, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setProxy(proxy);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setRequestHeadersAndUserAgentAndViewportAndCookies(headers, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setRequestHeaders(headers);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
-  }
-
-  async setResponseHeadersAndUserAgentAndViewportAndCookies(headers, userAgent, viewport, cookies) {
-    const context = this.context;
-    if (!context) throw new Error('未找到上下文实例，请先通过 newContext() 创建上下文');
-    await context.setResponseHeaders(headers);
-    await context.setUserAgent(userAgent);
-    await context.setViewportSize(viewport);
-    return context.addCookies(cookies);
+    return this.context.pages()[0];
   }
 }
 
 async function createPWToolkit() {
   const cfg = await fetchPlaywrightConfig();
-  const pw = tryRequirePlaywright();
-  if (!pw) throw new Error('未找到 playwright 依赖，请在 Config/依赖 中安装 playwright');
-  const toolkit = new PWToolkit(cfg, pw);
+  
+  let browserLauncher;
+  switch (cfg.browser) {
+    case 'firefox':
+      browserLauncher = firefox;
+      break;
+    case 'webkit':
+      browserLauncher = webkit;
+      break;
+    default:
+      browserLauncher = chromium;
+      break;
+  }
+
+  const toolkit = new PWToolkit(cfg, browserLauncher);
   return toolkit.init();
 }
 
-module.exports = { createPWToolkit };
+module.exports = { createPWToolkit, saveAuthEntry, getAuthEntry, listAuthEntries };

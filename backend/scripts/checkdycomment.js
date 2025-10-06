@@ -12,7 +12,11 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('checkdycomment'
   await page.goto('https://qianchuan.jinritemai.com/tools/comment-management/comment-content');
   await page.getByText('统计时间：').click();
   await page.waitForTimeout(1000);
-  await page.getByText('过去7天').click();
+  await page.getByText('本月').click();
+  await page.waitForTimeout(3000);
+  await page.getByText('评论层级：').click();
+  await page.waitForTimeout(1000);
+  await page.getByText('不限').first().click();
   await page.waitForTimeout(3000);
 
   let count = await page.getByText(/共*条记录/).textContent();
@@ -20,7 +24,7 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('checkdycomment'
   log.info(`评论总数: ${count}`);
   if (count != 0) {
     lastCommentDate = TD.lastCommentDate || 0;
-    let newCommentDate = await page.locator('table.ovui-table').locator('.col-comment-time div').allTextContents();
+    let newCommentDate = await page.locator('table.ovui-table .col-comment-time').first().locator('div').allTextContents();
 
     log.info(newCommentDate);
 
@@ -37,7 +41,7 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('checkdycomment'
       log.info('有新的抖音评论');
       TD.set('lastCommentDate', newCommentDate2);
 
-      const content = await page.locator('table.ovui-table tbody tr').locator('td').nth(2).textContent();
+      const content = await page.locator('table.ovui-table tbody tr').locator('td').nth(1).textContent();
       
       // sent markdown message
       await TD.notify(`您有新的抖音评论:\n\n> ${content}`, { template: 'dingtalk', title: '抖音新评论提醒' });

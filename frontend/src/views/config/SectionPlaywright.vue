@@ -54,6 +54,14 @@
         <el-input v-model="model.playwright.storageStatePath" placeholder="相对 scripts 根目录的路径，如 states/auth.json" />
       </el-form-item>
 
+      <el-form-item label="自动保存登录态">
+        <el-switch v-model="model.playwright.autoSaveStorageState" />
+      </el-form-item>
+
+      <el-form-item label="保存登录态名 (authName)">
+        <el-input v-model="model.playwright.authName" placeholder="例如 my-shop-account（用于在 auth.json 中标识）" />
+      </el-form-item>
+
       <el-form-item label="视频录制">
         <el-select v-model="model.playwright.video" style="width: 220px">
           <el-option label="关闭" value="off" />
@@ -74,8 +82,18 @@
         <el-input v-model="model.playwright.downloadsPath" placeholder="相对 scripts 根目录的目录，如 .artifacts" />
       </el-form-item>
 
-      <el-form-item label="自动安装浏览器">
-        <el-switch v-model="model.playwright.autoInstallBrowsers" />
+      <el-form-item label="自动安装浏览器" prop="autoInstallBrowsers" v-if="model.playwright">
+        <el-checkbox v-model="model.playwright.autoInstallBrowsers"></el-checkbox>
+      </el-form-item>
+
+      <el-form-item label="默认超时(ms)" prop="timeout" v-if="model.playwright">
+        <el-input-number v-model="model.playwright.timeout" :min="0" />
+        <div class="form-item-help">设置 Playwright 的默认超时时间（毫秒），用于页面加载、元素查找等操作。0 表示使用 Playwright 的默认值 (30000ms)。</div>
+      </el-form-item>
+
+      <el-form-item label="打开DevTools" prop="devtools" v-if="model.playwright">
+        <el-checkbox v-model="model.playwright.devtools"></el-checkbox>
+        <div class="form-item-help">启动浏览器时自动打开开发者工具，方便调试。仅在“无头模式”关闭时生效。</div>
       </el-form-item>
 
       <div class="tip">提示：脚本运行前，请在“配置 - 依赖”中安装 <code>playwright</code> 包。如缺少浏览器，请在 backend/scripts 目录执行：<code>npx playwright install</code>。</div>
@@ -104,6 +122,7 @@ function ensurePlaywrightDefaults() {
   pw.screenshot ??= 'only-on-failure'
   pw.downloadsPath ??= ''
   pw.autoInstallBrowsers ??= false
+  pw.timeout ??= 30000
   // 嵌套对象
   pw.viewport ??= { width: 1280, height: 800 }
   if (pw.viewport.width == null) pw.viewport.width = 1280

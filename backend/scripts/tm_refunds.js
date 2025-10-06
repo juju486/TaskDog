@@ -3,8 +3,8 @@
 const log = (TD && typeof TD.logger === 'function') ? TD.logger('TM_refunds') : console;
 ; (async () => {
   const pw = await TD.createPWToolkit();
-  // 建议通过参数或全局变量控制 headless，这里硬编码为 false 用于调试
-  pw.cfg.headless = false;
+  // 强制设置 headless 为 false，方便观察浏览器行为
+  pw.cfg.headless = false; 
   const page = await pw.newPage();
 
   // 从全局变量获取 cookies
@@ -18,6 +18,57 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('TM_refunds') : 
   await pw.addCookies(cookies);
 
   const refundRecords = []; // 初始化退款记录数组
+
+  
+
+  try {
+
+    log.info('start')
+    await page.goto('https://myseller.taobao.com/home.htm/trade-platform/refund-list');
+
+    await page.waitForTimeout(5000);
+    await TD.closePopups(page);
+
+    try {
+      const next = await page.waitForSelector('.driver-popover-next-btn', { timeout: 2000 });
+      await next.click();
+      log.info(`点击了下一步按钮`);
+      const close = await page.waitForSelector('.driver-popover-close-btn', { timeout: 2000 });
+      await close.click();
+    } catch (error) {
+      log.warn(`没有找到下一步按钮`);
+    }
+    const dcl = await page.locator('div[class*="data-board_new_delivery_block"]').filter({ hasText: '待商家处理' }).locator('span').first();
+    let text = parseInt(await dcl.textContent(), 10) || 0;
+    log.info(`待处理订单数量：${text}`);
+    if (text == 0) {
+      log.info(`没有待处理订单`);
+      return;
+    }
+    await dcl.click();
+    await page.waitForTimeout(2000);
+    while (text > 0) {
+      let zjsq = page.getByRole('button', { name: '最近申请排序 ' });
+      if (await zjsq.isVisible()) {
+        await zjsq.hover();
+      } else {
+        await page.getByRole('button', { name: '临近超时排序' }).hover({ timeout: 1000 }).catch(() => { });
+      }
+      const ljcs = page.getByRole('option', { name: '临近超时排序' }).locator('div');
+      await ljcs.click();
+      await page.waitForTimeout(5000);
+      const hasnext = await processRefundItems(page, refundRecords);
+      if (!hasnext) {
+        break;
+      }
+    }
+
+    log.info(`退款任务执行完成`);
+  } catch (error) {
+    log.error('执行退款任务时出错:', error);
+  } finally {
+    // await pw.close();
+  }
 
   // 将辅助函数定义在主函数内部，以便共享 pw, log 等上下文
   async function processDetail(detailPage, refundState) {
@@ -156,57 +207,5 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('TM_refunds') : 
       }
     }
     return refundCount > 5;
-  }
-
-  try {
-
-    await page.goto('https://myseller.taobao.com/home.htm/QnworkbenchHome/');
-
-    await page.pause();
-    // await page.goto('https://myseller.taobao.com/home.htm/trade-platform/refund-list');
-
-    await page.waitForTimeout(5000);
-
-    await TD.closePopups(page);
-
-    try {
-      const next = await page.waitForSelector('.driver-popover-next-btn', { timeout: 2000 });
-      await next.click();
-      log.info(`点击了下一步按钮`);
-      const close = await page.waitForSelector('.driver-popover-close-btn', { timeout: 2000 });
-      await close.click();
-    } catch (error) {
-      log.warn(`没有找到下一步按钮`);
-    }
-    const dcl = await page.locator('div[class*="data-board_new_delivery_block"]').filter({ hasText: '待商家处理' }).locator('span').first();
-    let text = parseInt(await dcl.textContent(), 10) || 0;
-    log.info(`待处理订单数量：${text}`);
-    if (text == 0) {
-      log.info(`没有待处理订单`);
-      return;
-    }
-    await dcl.click();
-    await page.waitForTimeout(2000);
-    while (text > 0) {
-      let zjsq = page.getByRole('button', { name: '最近申请排序 ' });
-      if (await zjsq.isVisible()) {
-        await zjsq.hover();
-      } else {
-        await page.getByRole('button', { name: '临近超时排序' }).hover({ timeout: 1000 }).catch(() => { });
-      }
-      const ljcs = page.getByRole('option', { name: '临近超时排序' }).locator('div');
-      await ljcs.click();
-      await page.waitForTimeout(5000);
-      const hasnext = await processRefundItems(page, refundRecords);
-      if (!hasnext) {
-        break;
-      }
-    }
-
-    log.info(`退款任务执行完成`);
-  } catch (error) {
-    log.error('执行退款任务时出错:', error);
-  } finally {
-    // await pw.close();
   }
 })();

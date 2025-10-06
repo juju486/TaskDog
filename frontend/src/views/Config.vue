@@ -72,6 +72,7 @@ import { configApi } from '@/api/modules'
 
 import SectionSystem from './config/SectionSystem.vue'
 import SectionExecution from './config/SectionExecution.vue'
+import SectionPlaywright from './config/SectionPlaywright.vue'
 import SectionScheduler from './config/SectionScheduler.vue'
 import SectionLogging from './config/SectionLogging.vue'
 import SectionNotify from './config/SectionNotify.vue'
@@ -115,6 +116,8 @@ const defaultConfig = () => ({
     userAgent: '',
     locale: 'zh-CN',
     timezoneId: 'Asia/Shanghai',
+    autoSaveStorageState: false,
+    authName: '',
     storageStatePath: '',
     video: 'off',
     screenshot: 'only-on-failure',

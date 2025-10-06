@@ -100,3 +100,5 @@ backend/build/
 backend/src/config/local.js
 
 backend/data/taskdog.json
+
+auth.json

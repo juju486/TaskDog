@@ -3,66 +3,68 @@
 const log = (TD && typeof TD.logger === 'function') ? TD.logger('DY_refunds') : console;
 
 const params = TD.params || {};
-; (async () => {
-  const pw = await TD.createPWToolkit();
-  // 建议通过参数或全局变量控制 headless，这里硬编码为 false 用于调试
-  pw.cfg.headless = params?.headless || true;
-  const page = await pw.newPage();
+log.info(params)
+  ; (async () => {
+    const pw = await TD.createPWToolkit();
+    // 建议通过参数或全局变量控制 headless，这里硬编码为 false 用于调试
+    pw.cfg.headless = params?.headless;
+    const page = await pw.newPage();
 
-  // 从全局变量获取 cookies
-  const cookies = TD.DY_COOKIES;
+    // 从全局变量获取 cookies
+    const cookies = TD.DY_COOKIES;
 
-  if (!cookies) {
-    log.error('未在全局变量中找到 DY_COOKIES');
-    await pw.close();
-    return;
-  }
-  await pw.addCookies(cookies);
-
-  const refundRecords = []; // 初始化退款记录数组
-
-  try {
-    await page.goto('https://fxg.jinritemai.com/ffa/maftersale/aftersale/list');
-
-    // 假设 TD.utils.closePopups 存在于 common.js 中
-    if (TD.utils && typeof TD.utils.closePopups === 'function') {
-      await TD.utils.closePopups(page);
+    if (!cookies) {
+      log.error('未在全局变量中找到 DY_COOKIES');
+      await pw.close();
+      return;
     }
+    await pw.addCookies(cookies);
 
-    await page.getByText('退货待商家收货').click().catch(() => { log.warn(`未找到'退货待商家收货'按钮`); });
-    await page.waitForTimeout(5000);
+    const refundRecords = []; // 初始化退款记录数组
 
-    let countEl = await page.locator('.auxo-pagination-total-text').textContent();
-    let count = countEl ? parseInt(countEl.match(/\d+/)[0]) : 0;
-    log.info(`退款订单总数: ${count}`);
+    try {
+      log.info('start')
+      await page.goto('https://fxg.jinritemai.com/ffa/maftersale/aftersale/list');
 
-    // 再次获取 context，确保其在 newPage 后有效
-    const currentContext = pw.context;
-    if (!currentContext) {
-      throw new Error('Playwright context is not available after creating a new page.');
-    }
+      // 假设 TD.utils.closePopups 存在于 common.js 中
+      if (TD.utils && typeof TD.utils.closePopups === 'function') {
+        await TD.utils.closePopups(page);
+      }
 
-    while (count > 0) {
-      // 刷新列表
-      await page.locator('#orderAppContainer').getByRole('button', { name: '查询' }).click();
+      await page.getByText('退货待商家收货').click().catch(() => { log.warn(`未找到'退货待商家收货'按钮`); });
       await page.waitForTimeout(5000);
 
-      // 传入确认有效的 context
-      const processedCount = await processRefundItems(page, currentContext, refundRecords);
+      let countEl = await page.locator('.auxo-pagination-total-text').textContent();
+      let count = countEl ? parseInt(countEl.match(/\d+/)[0]) : 0;
+      log.info(`退款订单总数: ${count}`);
 
-      countEl = await page.locator('.auxo-pagination-total-text').textContent();
-      count = countEl ? parseInt(countEl.match(/\d+/)[0]) : 0;
-      log.info(`剩余订单数: ${count}`);
+      // 再次获取 context，确保其在 newPage 后有效
+      const currentContext = pw.context;
+      if (!currentContext) {
+        throw new Error('Playwright context is not available after creating a new page.');
+      }
 
-      if (!processedCount) break;
+      while (count > 0) {
+        // 刷新列表
+        await page.locator('#orderAppContainer').getByRole('button', { name: '查询' }).click();
+        await page.waitForTimeout(5000);
+
+        // 传入确认有效的 context
+        const processedCount = await processRefundItems(page, currentContext, refundRecords);
+
+        countEl = await page.locator('.auxo-pagination-total-text').textContent();
+        count = countEl ? parseInt(countEl.match(/\d+/)[0]) : 0;
+        log.info(`剩余订单数: ${count}`);
+
+        if (!processedCount) break;
+      }
+      log.info(`退款任务执行完成`);
+    } catch (error) {
+      log.error('执行退款任务时出错:', error);
+    } finally {
+      await pw.close();
     }
-    log.info(`退款任务执行完成`);
-  } catch (error) {
-    log.error('执行退款任务时出错:', error);
-  } finally {
-    await pw.close();
-  }
-})();
+  })();
 
 async function processRefundItems(page, context, refundRecords = []) {
   log.info(`开始处理退款订单列表`);
@@ -95,7 +97,7 @@ async function processRefundItems(page, context, refundRecords = []) {
       log.error(`处理单个订单项时出错: ${e.message}`);
     }
   }
-  return processedCount > 5; 
+  return processedCount > 5;
 }
 
 async function processRefundDetail(detailPage) {
@@ -104,7 +106,7 @@ async function processRefundDetail(detailPage) {
     await detailPage.waitForLoadState('networkidle');
     await detailPage.waitForTimeout(3000);
 
-    await detailPage.getByLabel('退货物流').getByText('展开全部').click()
+    await detailPage.getByLabel('退货物流').getByText('展开全部').click({time:1000}).catch(() => { });
     await detailPage.waitForTimeout(300);
 
 
@@ -131,7 +133,7 @@ async function processRefundDetail(detailPage) {
       log.warn(`订单已签收，但未命中签收规则, 订单ID：${orderId}, 退款ID：${refundId}`);
 
       // 使用 TD.notify 发送通知
-      await TD.notify(`抖音订单[${orderId}]已签收但未命中规则`, { template: 'dingtalk',title: `抖音退款异常提醒` });
+      await TD.notify(`抖音订单[${orderId}]已签收但未命中规则`, { template: 'dingtalk', title: `抖音退款异常提醒` });
 
       await detailPage.close();
       return false;
