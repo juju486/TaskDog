@@ -35,7 +35,26 @@ const savingAll = ref(false)
 const testing = ref(false)
 
 const defaultConfig = () => ({
-	playwright: { browser: 'chromium', headless: true, slowMo: 0, baseURL: '', viewport: { width: 1280, height: 800 }, proxy: { server: '', username: '', password: '' }, userAgent: '', locale: 'zh-CN', timezoneId: 'Asia/Shanghai', storageStatePath: '', video: 'off', screenshot: 'only-on-failure', downloadsPath: '', autoInstallBrowsers: false }
+  playwright: {
+    browser: 'chromium',
+    headless: true,
+    slowMo: 0,
+    baseURL: '',
+    viewport: { width: 1280, height: 800 },
+    proxy: { server: '', username: '', password: '' },
+    userAgent: '',
+    locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
+    storageStatePath: '',
+    video: 'off',
+    screenshot: 'only-on-failure',
+    downloadsPath: '',
+    autoInstallBrowsers: false,
+    useSystemPlaywright: false,
+    timeout: 30000,
+    devtools: false,
+    customProps: [] // 默认为空数组
+  }
 })
 
 const configObj = ref(defaultConfig())

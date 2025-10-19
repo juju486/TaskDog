@@ -50,14 +50,6 @@
         </div>
       </el-form-item>
 
-      <el-form-item label="登录态存档 (storageState)">
-        <el-input v-model="model.playwright.storageStatePath" placeholder="相对 scripts 根目录的路径，如 states/auth.json" />
-      </el-form-item>
-
-      <el-form-item label="自动保存登录态">
-        <el-switch v-model="model.playwright.autoSaveStorageState" />
-      </el-form-item>
-
       <el-form-item label="保存登录态名 (authName)">
         <el-input v-model="model.playwright.authName" placeholder="例如 my-shop-account（用于在 auth.json 中标识）" />
       </el-form-item>
@@ -93,10 +85,63 @@
 
       <el-form-item label="打开DevTools" prop="devtools" v-if="model.playwright">
         <el-checkbox v-model="model.playwright.devtools"></el-checkbox>
-        <div class="form-item-help">启动浏览器时自动打开开发者工具，方便调试。仅在“无头模式”关闭时生效。</div>
+        <div class="form-item-help">启动浏览器时自动打开开发者工具，方便调试。仅在"无头模式"关闭时生效。</div>
       </el-form-item>
 
-      <div class="tip">提示：脚本运行前，请在“配置 - 依赖”中安装 <code>playwright</code> 包。如缺少浏览器，请在 backend/scripts 目录执行：<code>npx playwright install</code>。</div>
+      <el-form-item label="使用系统 Playwright" prop="useSystemPlaywright" v-if="model.playwright">
+        <el-checkbox v-model="model.playwright.useSystemPlaywright"></el-checkbox>
+        <div class="form-item-help">启用此选项将使用系统安装的 Playwright 而不是项目依赖中的版本。需要您在系统中全局安装 Playwright。</div>
+      </el-form-item>
+
+      <!-- 自定义属性配置 -->
+      <el-form-item label="自定义属性" v-if="model.playwright">
+        <div class="custom-props-section">
+          <div 
+            v-for="(prop, index) in model.playwright.customProps" 
+            :key="index" 
+            class="custom-prop-row"
+          >
+            <el-input 
+              v-model="prop.key" 
+              placeholder="属性名" 
+              style="width: 150px; margin-right: 8px;"
+            />
+            <el-select
+              v-model="prop.type"
+              placeholder="类型"
+              style="width: 100px; margin-right: 8px;"
+            >
+              <el-option label="字符串" value="string" />
+              <el-option label="数字" value="number" />
+              <el-option label="布尔" value="boolean" />
+              <el-option label="JSON" value="json" />
+              <el-option label="数组" value="array" />
+            </el-select>
+            <el-input 
+              v-model="prop.value" 
+              placeholder="属性值" 
+              style="flex: 1; margin-right: 8px;"
+            />
+            <el-button 
+              type="danger" 
+              icon="Delete" 
+              circle 
+              @click="removeCustomProp(index)"
+            />
+          </div>
+          <el-button 
+            type="primary" 
+            icon="Plus" 
+            @click="addCustomProp"
+            style="margin-top: 8px;"
+          >
+            添加自定义属性
+          </el-button>
+        </div>
+        <div class="form-item-help">添加自定义属性，这些属性将在创建浏览器上下文时传递给 Playwright。数组类型值请用逗号分隔，如：--arg1,--arg2</div>
+      </el-form-item>
+
+      <div class="tip">提示：脚本运行前，请在"配置 - 依赖"中安装 <code>playwright</code> 包。如缺少浏览器，请在 backend/scripts 目录执行：<code>npx playwright install</code>。</div>
     </el-form>
   </div>
 </template>
@@ -123,6 +168,10 @@ function ensurePlaywrightDefaults() {
   pw.downloadsPath ??= ''
   pw.autoInstallBrowsers ??= false
   pw.timeout ??= 30000
+  pw.devtools ??= false
+  pw.useSystemPlaywright ??= false
+  // 自定义属性
+  pw.customProps ??= []
   // 嵌套对象
   pw.viewport ??= { width: 1280, height: 800 }
   if (pw.viewport.width == null) pw.viewport.width = 1280
@@ -131,6 +180,17 @@ function ensurePlaywrightDefaults() {
   if (pw.proxy.server == null) pw.proxy.server = ''
   if (pw.proxy.username == null) pw.proxy.username = ''
   if (pw.proxy.password == null) pw.proxy.password = ''
+}
+
+function addCustomProp() {
+  if (!model.value.playwright.customProps) {
+    model.value.playwright.customProps = []
+  }
+  model.value.playwright.customProps.push({ key: '', type: 'string', value: '' })
+}
+
+function removeCustomProp(index) {
+  model.value.playwright.customProps.splice(index, 1)
 }
 
 onMounted(ensurePlaywrightDefaults)
@@ -143,4 +203,7 @@ watch(model, ensurePlaywrightDefaults, { immediate: true, deep: true })
 .grid { display: grid; grid-template-columns: 1fr 220px 220px; gap: 8px; }
 .row { display: flex; align-items: center; gap: 8px; }
 .tip { margin-top: 8px; font-size: 12px; color: #909399; }
+.form-item-help { font-size: 12px; color: #909399; margin-top: 4px; }
+.custom-props-section { width: 100%; }
+.custom-prop-row { display: flex; align-items: center; margin-bottom: 8px; }
 </style>

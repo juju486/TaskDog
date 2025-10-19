@@ -19,15 +19,27 @@
 
 const path = require('path');
 const { spawnSync } = require('child_process');
-// 使用 playwright-extra 替代 playwright
-const { chromium, firefox, webkit } = require('playwright-extra');
-// 加载 stealth 插件
-const stealth = require('puppeteer-extra-plugin-stealth')();
+// 尝试使用系统级安装的 Playwright，如果失败则使用 playwright-extra
+let playwrightModules;
 
-// 为所有浏览器启用 stealth 插件
-chromium.use(stealth);
-firefox.use(stealth);
-webkit.use(stealth);
+try {
+  // 尝试直接 require 系统安装的 playwright
+  playwrightModules = require('playwright');
+  console.log('使用系统安装的 Playwright');
+} catch (err) {
+  console.log('使用项目依赖中的 playwright-extra');
+  // 使用 playwright-extra 替代 playwright
+  const { chromium, firefox, webkit } = require('playwright-extra');
+  // 加载 stealth 插件
+  const stealth = require('puppeteer-extra-plugin-stealth')();
+
+  // 为所有浏览器启用 stealth 插件
+  chromium.use(stealth);
+  firefox.use(stealth);
+  webkit.use(stealth);
+
+  playwrightModules = { chromium, firefox, webkit };
+}
 
 const DEFAULTS = {
   browser: 'chromium', // chromium | firefox | webkit
@@ -36,12 +48,14 @@ const DEFAULTS = {
   baseURL: '',
   viewport: { width: 1280, height: 800 },
   proxy: { server: '', username: '', password: '' },
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
   locale: 'zh-CN',
   timezoneId: 'Asia/Shanghai',
   authName: '', // 新增：用于从 auth.json 加载/保存的条目名称
   autoSaveStorageState: false, // 新增：是否在 close 时自动保存
   autoInstallBrowsers: true, // 默认开启自动安装
+  useSystemPlaywright: false, // 新增：是否优先使用系统安装的 Playwright
+  customProps: [], // 新增：自定义属性配置
 };
 
 // persistent auth storage file (存放 Playwright 登录态列表)
@@ -116,6 +130,60 @@ function normalizeProxyServer(server) {
   return 'http://' + s;
 }
 
+// 处理自定义属性
+function processCustomProps(cfg, contextOptions) {
+  if (!Array.isArray(cfg.customProps)) return;
+
+  for (const prop of cfg.customProps) {
+    if (prop.key && prop.value !== undefined) {
+      let parsedValue = prop.value;
+
+      // 根据类型处理值
+      switch (prop.type) {
+        case 'number':
+          parsedValue = Number(prop.value);
+          break;
+        case 'boolean':
+          parsedValue = prop.value === 'true' || prop.value === true;
+          break;
+        case 'json':
+          try {
+            parsedValue = JSON.parse(prop.value);
+          } catch (e) {
+            console.warn(`无法解析自定义属性 "${prop.key}" 的 JSON 值:`, e.message);
+            // 保持原始字符串值
+            parsedValue = prop.value;
+          }
+          break;
+        case 'array':
+          // 尝试解析为数组，支持逗号分隔的字符串
+          if (Array.isArray(prop.value)) {
+            parsedValue = prop.value;
+          } else if (typeof prop.value === 'string') {
+            // 用逗号分隔并去除空白
+            parsedValue = prop.value.split(',').map(item => item.trim()).filter(item => item.length > 0);
+          } else {
+            try {
+              parsedValue = JSON.parse(prop.value);
+            } catch (e) {
+              console.warn(`无法解析自定义属性 "${prop.key}" 的数组值:`, e.message);
+              // 保持原始字符串值
+              parsedValue = prop.value;
+            }
+          }
+          break;
+        case 'string':
+        default:
+          // 字符串类型，保持原值
+          parsedValue = prop.value;
+          break;
+      }
+
+      contextOptions[prop.key] = parsedValue;
+    }
+  }
+}
+
 class PWToolkit {
   constructor(cfg, browserLauncher) {
     this.cfg = cfg;
@@ -142,15 +210,17 @@ class PWToolkit {
 
   async launch() {
     if (this.browser) return this.browser;
-    
-    const { headless, slowMo, proxy, devtools } = this.cfg;
+
+    const { headless, slowMo, proxy, devtools, userAgent, executablePath, args } = this.cfg;
     const server = proxy && proxy.server ? normalizeProxyServer(proxy.server) : undefined;
     const proxyOpt = server ? { server, username: proxy.username || undefined, password: proxy.password || undefined } : undefined;
-    
+
     // 如果 headless 为 false 且 devtools 为 true，则打开开发者工具
-    const launchOptions = { headless, slowMo, proxy: proxyOpt, devtools: !headless && devtools };
+    const launchOptions = {
+      headless, slowMo, proxy: proxyOpt, userAgent, args, executablePath, devtools: !headless && devtools
+    };
     const doLaunch = async () => await this.browserLauncher.launch(launchOptions);
-    
+
     try {
       this.browser = await doLaunch();
     } catch (e) {
@@ -234,6 +304,9 @@ class PWToolkit {
       }
     }
 
+    // 处理自定义属性
+    processCustomProps(cfg, contextOptions);
+
     const context = await this.browser.newContext(contextOptions);
 
     // 设置默认超时
@@ -280,9 +353,9 @@ class PWToolkit {
     const page = this.getPage();
     return page.screenshot(options);
   }
-  
+
   // ===============================================
-  
+
   // 暴露 context 和 page，方便直接调用
   getContext() {
     if (!this.context) throw new Error('Context not initialized. Call newContext() or newPage() first.');
@@ -299,18 +372,37 @@ class PWToolkit {
 
 async function createPWToolkit() {
   const cfg = await fetchPlaywrightConfig();
-  
+
+  // 根据配置决定使用哪种 Playwright
   let browserLauncher;
-  switch (cfg.browser) {
-    case 'firefox':
-      browserLauncher = firefox;
-      break;
-    case 'webkit':
-      browserLauncher = webkit;
-      break;
-    default:
-      browserLauncher = chromium;
-      break;
+  const browserType = cfg.browser || 'chromium';
+
+  if (cfg.useSystemPlaywright) {
+    // 使用系统安装的 Playwright
+    switch (browserType) {
+      case 'firefox':
+        browserLauncher = playwrightModules.firefox;
+        break;
+      case 'webkit':
+        browserLauncher = playwrightModules.webkit;
+        break;
+      default:
+        browserLauncher = playwrightModules.chromium;
+        break;
+    }
+  } else {
+    // 使用 playwright-extra
+    switch (browserType) {
+      case 'firefox':
+        browserLauncher = playwrightModules.firefox;
+        break;
+      case 'webkit':
+        browserLauncher = playwrightModules.webkit;
+        break;
+      default:
+        browserLauncher = playwrightModules.chromium;
+        break;
+    }
   }
 
   const toolkit = new PWToolkit(cfg, browserLauncher);

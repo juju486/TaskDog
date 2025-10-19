@@ -123,6 +123,10 @@ const defaultConfig = () => ({
     screenshot: 'only-on-failure',
     downloadsPath: '',
     autoInstallBrowsers: false,
+    useSystemPlaywright: false,
+    timeout: 30000,
+    devtools: false,
+    customProps: [] // 默认为空数组
   },
   scheduler: { schedulerTz: 'Asia/Shanghai', overlapPolicy: 'skip', catchup: false, jitterMs: 5000, retry: { maxAttempts: 1, backoffMs: 30000 } },
   logging: { level: 'info', retainDays: 30, captureMaxKB: 256, redactKeys: ['token','password'], rotate: { maxSizeMB: 10, maxFiles: 5 } },
