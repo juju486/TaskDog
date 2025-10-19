@@ -37,16 +37,27 @@ const log = (TD && typeof TD.logger === 'function') ? TD.logger('checkdycomment'
 
     log.info(newCommentDate2 > lastCommentDate);
 
+
+
     if (newCommentDate2 > lastCommentDate) {
       log.info('有新的抖音评论');
       TD.set('lastCommentDate', newCommentDate2);
 
-      const content = await page.locator('table.ovui-table tbody tr').locator('td').nth(1).textContent();
-      
-      // sent markdown message
-      await TD.notify(`您有新的抖音评论:\n\n> ${content}`, { template: 'dingtalk', title: '抖音新评论提醒' });
+      const content = await page.locator('table.ovui-table tbody tr').all();
+      let contents = [];
+      for (let i = 0; i < content.length; i++) {
+        const element = content[i].locator('td').nth(1);
+        const text = await element.textContent();
+        contents.push(text);
+      }
+      log.info(contents);
 
-      
+      const dy_content = contents.join('\n\n');
+
+      // sent markdown message
+      await TD.notify(`您有新的抖音评论:\n\n> ${dy_content}`, { template: 'dingtalk', title: '抖音新评论提醒' });
+
+
     }
   }
 
